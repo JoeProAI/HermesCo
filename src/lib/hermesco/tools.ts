@@ -4,6 +4,7 @@
 import type { Proposal } from "./types";
 import { createEarn, createSpend, getState } from "./treasury";
 import { createOffer } from "./stripe-skills";
+import { runInSandbox } from "./sandbox";
 
 export interface ToolSpec {
   name: string;
@@ -36,8 +37,8 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     name: "run_in_sandbox",
     description:
-      "Do real work on the HermesCo execution substrate (Daytona sandbox on a per-agent Fly machine): run code, build, or produce a deliverable.",
-    parameters: { task: "string" },
+      "Do real work on the HermesCo execution substrate: a fresh, isolated Daytona Linux sandbox. Pass a bash `command` to run (e.g. write+run a Python script, build a file, call a CLI). Returns the real exit code and stdout.",
+    parameters: { command: "string (bash command to run)", task: "string (short label of what this accomplishes)" },
   },
 ];
 
@@ -83,16 +84,21 @@ export async function executeTool(
     case "create_offer": {
       const productName = str(args.product_name, "HermesCo Service");
       const price = num(args.price_usd, 0);
-      const offer = await createOffer(productName, price);
-      return {
-        observation: JSON.stringify({
-          ok: true,
-          product: productName,
-          price_usd: price,
-          payment_link: offer.paymentLinkUrl,
-          stripe: offer.kind,
-        }),
-      };
+      try {
+        const offer = await createOffer(productName, price);
+        return {
+          observation: JSON.stringify({
+            ok: true,
+            product: productName,
+            price_usd: price,
+            payment_link: offer.paymentLinkUrl,
+            stripe: offer.kind,
+          }),
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { observation: JSON.stringify({ ok: false, error: msg }) };
+      }
     }
 
     case "collect_payment": {
@@ -153,17 +159,40 @@ export async function executeTool(
     }
 
     case "run_in_sandbox": {
+      const command = str(args.command, str(args.task, ""));
       const task = str(args.task, "");
-      // Execution substrate (Daytona sandbox on a per-agent Fly machine). The
-      // infrastructure is preserved from clawd.run; live wiring is the next step.
-      return {
-        observation: JSON.stringify({
-          ok: true,
-          substrate: "daytona-on-fly",
-          task,
-          result: `Completed "${task.slice(0, 120)}" in an isolated sandbox.`,
-        }),
-      };
+      if (!command.trim()) {
+        return {
+          observation: JSON.stringify({
+            ok: false,
+            error: "No command provided. Pass a bash `command` to run in the sandbox.",
+          }),
+        };
+      }
+      try {
+        const run = await runInSandbox(command);
+        return {
+          observation: JSON.stringify({
+            ok: run.ok,
+            substrate: "daytona",
+            sandbox_id: run.sandboxId,
+            task,
+            command: run.command,
+            exit_code: run.exitCode,
+            duration_ms: run.durationMs,
+            output: run.output,
+          }),
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          observation: JSON.stringify({
+            ok: false,
+            substrate: "daytona",
+            error: `Sandbox unavailable: ${msg}`,
+          }),
+        };
+      }
     }
 
     default:

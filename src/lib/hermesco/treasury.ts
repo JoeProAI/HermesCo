@@ -29,8 +29,10 @@ import {
 import { screenSpend } from "./safety";
 import { collectPayment, paySpend, stripeMode } from "./stripe-skills";
 
+// Starts at $0 — the Treasury holds only real, deposited capital plus what the
+// agent actually earns. No seeded money. The human funds it via Stripe deposit.
 export const DEFAULT_BUDGET: Budget = {
-  startingCapitalUsd: 100,
+  startingCapitalUsd: 0,
   maxSpendPerActionUsd: 50,
   autoApproveUnderUsd: 10,
   dailySpendCapUsd: 100,
@@ -57,24 +59,28 @@ export async function getState(id: string): Promise<TreasuryState> {
   proposals.sort((a, b) => b.createdAt - a.createdAt);
   ledger.sort((a, b) => b.at - a.at);
 
+  let depositsUsd = 0;
   let revenueUsd = 0;
   let expenseUsd = 0;
   let spentTodayUsd = 0;
   const today = startOfTodayMs();
   for (const e of ledger) {
-    if (e.amountUsd >= 0) {
+    if (e.type === "deposit") {
+      depositsUsd += e.amountUsd;
+    } else if (e.amountUsd >= 0) {
       revenueUsd += e.amountUsd;
     } else {
       expenseUsd += -e.amountUsd;
       if (e.at >= today) spentTodayUsd += -e.amountUsd;
     }
   }
-  const balanceUsd = budget.startingCapitalUsd + revenueUsd - expenseUsd;
+  const balanceUsd = budget.startingCapitalUsd + depositsUsd + revenueUsd - expenseUsd;
 
   return {
     workspaceId: id,
     budget,
     balanceUsd,
+    depositsUsd,
     revenueUsd,
     expenseUsd,
     netProfitUsd: revenueUsd - expenseUsd,
@@ -256,6 +262,30 @@ async function executeProposal(id: string, p: Proposal): Promise<Proposal> {
     await putProposal(failed);
     return failed;
   }
+}
+
+// DEPOSIT — record real capital the human added via Stripe Checkout. Idempotent
+// on the Stripe ref so a page refresh or webhook retry can't double-credit.
+export async function recordDeposit(
+  id: string,
+  input: { amountUsd: number; stripeRef: string; description?: string },
+): Promise<{ duplicate: boolean; entry?: LedgerEntry; state: TreasuryState }> {
+  await ensureWorkspace(id);
+  const ledger = await listLedger(id);
+  if (ledger.some((e) => e.stripeRef === input.stripeRef)) {
+    return { duplicate: true, state: await getState(id) };
+  }
+  const entry: LedgerEntry = {
+    id: `led_dep_${randomUUID().slice(0, 8)}`,
+    workspaceId: id,
+    type: "deposit",
+    amountUsd: Math.max(0, input.amountUsd),
+    description: input.description || "Treasury deposit",
+    stripeRef: input.stripeRef,
+    at: Date.now(),
+  };
+  await appendLedger(entry);
+  return { duplicate: false, entry, state: await getState(id) };
 }
 
 export async function resetWorkspace(id: string, budget?: Budget): Promise<TreasuryState> {

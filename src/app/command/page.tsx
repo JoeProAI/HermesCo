@@ -51,7 +51,10 @@ export default function CommandCenter() {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [entered, setEntered] = useState(false);
   const [authMsg, setAuthMsg] = useState<string | null>(null);
+  const [depositing, setDepositing] = useState(false);
+  const [depositMsg, setDepositMsg] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const depositHandled = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!workspaceId || workspaceId === "g_server") return;
@@ -79,6 +82,43 @@ export default function CommandCenter() {
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
   }, [log, busy]);
+
+  // Returning from Stripe Checkout: confirm the deposit and credit the Treasury.
+  useEffect(() => {
+    if (!workspaceId || workspaceId === "g_server" || depositHandled.current) return;
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const sessionId = url.searchParams.get("deposit_session");
+    const cancelled = url.searchParams.get("deposit_cancelled");
+    if (!sessionId && !cancelled) return;
+    depositHandled.current = true;
+    url.searchParams.delete("deposit_session");
+    url.searchParams.delete("deposit_cancelled");
+    window.history.replaceState({}, "", url.toString());
+    if (cancelled) {
+      setDepositMsg("Deposit cancelled.");
+      return;
+    }
+    void (async () => {
+      const res = await fetch(
+        `/api/hermesco/treasury/deposit?session_id=${encodeURIComponent(sessionId!)}&workspaceId=${encodeURIComponent(workspaceId)}`,
+      );
+      const data = (await res.json()) as {
+        ok?: boolean;
+        paid?: boolean;
+        depositedUsd?: number;
+        state?: TreasuryState;
+        error?: string;
+      };
+      if (data.error) setDepositMsg(data.error);
+      else if (data.ok && data.state) {
+        setState(data.state);
+        setDepositMsg(`Deposited ${money(data.depositedUsd ?? 0)} into the Treasury.`);
+      } else if (data.paid === false) {
+        setDepositMsg("Payment not completed.");
+      }
+    })();
+  }, [workspaceId]);
 
   async function send(message: string) {
     if (!message.trim() || busy) return;
@@ -124,6 +164,29 @@ export default function CommandCenter() {
       }
     } finally {
       setDeciding(null);
+    }
+  }
+
+  async function deposit(amountUsd: number) {
+    if (depositing) return;
+    setDepositing(true);
+    setDepositMsg(null);
+    try {
+      const res = await fetch("/api/hermesco/treasury/deposit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId, amountUsd }),
+      });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setDepositMsg(data.error || "Could not start the deposit.");
+    } catch (err) {
+      setDepositMsg(`Network error: ${String(err)}`);
+    } finally {
+      setDepositing(false);
     }
   }
 
@@ -401,6 +464,9 @@ export default function CommandCenter() {
             pending={pending}
             deciding={deciding}
             onDecide={decide}
+            onDeposit={deposit}
+            depositing={depositing}
+            depositMsg={depositMsg}
           />
         </aside>
       </div>
@@ -618,7 +684,7 @@ function EntryGate({
             fontFamily: "var(--font-mono)",
           }}
         >
-          No card. Test mode. Every move is policy-bounded.
+          No card to enter. Every money move is policy-bounded.
         </p>
       </div>
     </div>
@@ -675,11 +741,17 @@ function TreasuryPanel({
   pending,
   deciding,
   onDecide,
+  onDeposit,
+  depositing,
+  depositMsg,
 }: {
   state: TreasuryState | null;
   pending: Proposal[];
   deciding: string | null;
   onDecide: (id: string, d: "approve" | "deny") => void;
+  onDeposit: (amountUsd: number) => void;
+  depositing: boolean;
+  depositMsg: string | null;
 }) {
   if (!state) return <div style={{ color: "rgba(237,230,217,0.5)", fontFamily: "var(--font-mono)", fontSize: 13 }}>Loading Treasury…</div>;
 
@@ -721,12 +793,20 @@ function TreasuryPanel({
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 34, fontWeight: 600, color: CREAM, marginTop: 2 }}>
           {money(state.balanceUsd)}
         </div>
-        <div style={{ display: "flex", gap: 18, marginTop: 14 }}>
+        <div style={{ display: "flex", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
+          <Metric label="Deposited" value={money(state.depositsUsd)} color={GOLD} />
           <Metric label="Revenue" value={money(state.revenueUsd)} color={SUCCESS} />
           <Metric label="Spend" value={money(state.expenseUsd)} color="rgba(237,230,217,0.8)" />
           <Metric label="Net profit" value={money(state.netProfitUsd)} color={profitColor} />
         </div>
       </div>
+
+      <DepositControl
+        stripeMode={state.stripeMode}
+        onDeposit={onDeposit}
+        depositing={depositing}
+        depositMsg={depositMsg}
+      />
 
       {/* caps */}
       <div style={{ border: "1px solid rgba(237,230,217,0.10)", borderRadius: 12, padding: "14px 16px" }}>
@@ -870,6 +950,110 @@ function TreasuryPanel({
         <br />
         Engine: Cognition AI · Devin
       </div>
+    </div>
+  );
+}
+
+function DepositControl({
+  stripeMode,
+  onDeposit,
+  depositing,
+  depositMsg,
+}: {
+  stripeMode: "test" | "live" | "none";
+  onDeposit: (amountUsd: number) => void;
+  depositing: boolean;
+  depositMsg: string | null;
+}) {
+  const [custom, setCustom] = useState("");
+  const presets = [25, 50, 100];
+  const disabled = depositing || stripeMode === "none";
+
+  return (
+    <div style={{ border: "1px solid rgba(200,137,62,0.22)", borderRadius: 12, padding: "14px 16px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 10,
+        }}
+      >
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "rgba(237,230,217,0.5)", letterSpacing: "0.1em" }}>
+          FUND THE TREASURY
+        </span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: stripeMode === "live" ? GOLD : TEAL }}>
+          {stripeMode === "live" ? "REAL MONEY" : stripeMode === "test" ? "STRIPE TEST" : "STRIPE OFF"}
+        </span>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {presets.map((amt) => (
+          <button
+            key={amt}
+            onClick={() => onDeposit(amt)}
+            disabled={disabled}
+            style={{
+              flex: 1,
+              fontFamily: "var(--font-mono)",
+              fontSize: 13,
+              fontWeight: 700,
+              color: disabled ? "rgba(237,230,217,0.35)" : INK,
+              background: disabled ? "rgba(237,230,217,0.08)" : `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`,
+              border: "none",
+              borderRadius: 8,
+              padding: "10px 0",
+              cursor: disabled ? "default" : "pointer",
+            }}
+          >
+            ${amt}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <input
+          value={custom}
+          onChange={(e) => setCustom(e.target.value.replace(/[^0-9.]/g, ""))}
+          placeholder="Custom $"
+          inputMode="decimal"
+          disabled={disabled}
+          style={{
+            flex: 1,
+            background: SURFACE,
+            border: "1px solid rgba(237,230,217,0.14)",
+            borderRadius: 8,
+            padding: "9px 12px",
+            color: CREAM,
+            fontSize: 13.5,
+            fontFamily: "var(--font-mono)",
+            outline: "none",
+          }}
+        />
+        <button
+          onClick={() => {
+            const amt = parseFloat(custom);
+            if (Number.isFinite(amt) && amt >= 1) onDeposit(amt);
+          }}
+          disabled={disabled || !(parseFloat(custom) >= 1)}
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 13,
+            fontWeight: 700,
+            color: disabled || !(parseFloat(custom) >= 1) ? "rgba(237,230,217,0.35)" : INK,
+            background: disabled || !(parseFloat(custom) >= 1) ? "rgba(237,230,217,0.08)" : CREAM,
+            border: "none",
+            borderRadius: 8,
+            padding: "0 16px",
+            cursor: disabled || !(parseFloat(custom) >= 1) ? "default" : "pointer",
+          }}
+        >
+          {depositing ? "…" : "Deposit"}
+        </button>
+      </div>
+      {(depositMsg || stripeMode === "none") && (
+        <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: stripeMode === "none" ? "rgba(237,230,217,0.4)" : TEAL, margin: "10px 0 0" }}>
+          {depositMsg || "Connect Stripe to enable real deposits."}
+        </p>
+      )}
     </div>
   );
 }

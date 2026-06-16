@@ -6,6 +6,10 @@ export type ModelKey = "hermes" | "nemotron";
 
 export type ProposalType = "earn" | "spend";
 
+// Ledger entries also record human capital deposits (real money funding the
+// Treasury), which are not agent proposals.
+export type LedgerType = ProposalType | "deposit";
+
 export type ProposalStatus =
   | "pending" // awaiting human decision
   | "approved" // human approved, about to execute
@@ -28,7 +32,7 @@ export interface Proposal {
   risk: RiskLevel;
   safetyReason: string;
   stripeRef?: string; // payment link url / payment intent id
-  stripeKind?: string; // "payment_link" | "payment_intent" | "simulated"
+  stripeKind?: string; // "payment_link" | "payment_intent"
   createdAt: number;
   decidedAt?: number;
   decidedBy?: string; // "policy" | "human"
@@ -40,8 +44,8 @@ export interface LedgerEntry {
   id: string;
   workspaceId: string;
   proposalId?: string;
-  type: ProposalType;
-  amountUsd: number; // signed: earn positive, spend negative
+  type: LedgerType;
+  amountUsd: number; // signed: earn/deposit positive, spend negative
   description: string;
   stripeRef?: string;
   at: number;
@@ -60,10 +64,11 @@ export interface Budget {
 export interface TreasuryState {
   workspaceId: string;
   budget: Budget;
-  balanceUsd: number; // startingCapital + sum(ledger)
-  revenueUsd: number; // sum of earns
+  balanceUsd: number; // deposits + revenue - expense
+  depositsUsd: number; // sum of human capital deposits
+  revenueUsd: number; // sum of earns (money the agent made)
   expenseUsd: number; // sum of spends (magnitude)
-  netProfitUsd: number; // revenue - expense
+  netProfitUsd: number; // revenue - expense (deposits are capital, not profit)
   spentTodayUsd: number;
   pendingCount: number;
   proposals: Proposal[]; // newest first
