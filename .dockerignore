@@ -1,0 +1,12 @@
+.git
+node_modules
+.next
+.env*
+!.env.example
+npm-debug.log
+Dockerfile
+.dockerignore
+*.md
+tsconfig.tsbuildinfo
+/home/ubuntu/attachments
+scripts/daytona-smoke.mjs
