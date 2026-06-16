@@ -1,0 +1,138 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ── User Data (strict: own data only) ────────────────────────
+    
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Bot configuration (SOUL.md, IDENTITY.md, etc.)
+    match /clawdbot_data/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Sandbox instances
+    match /clawdbot_instances/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // User API keys (BYOK) - strictly own data
+    match /user_api_keys/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Usage tracking - read own only, writes via admin SDK
+    match /usage/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false; // Server-side only via admin SDK
+    }
+    
+    match /usage_monthly/{docId} {
+      allow read: if request.auth != null && docId.matches(request.auth.uid + '_.*');
+      allow write: if false; // Server-side only
+    }
+    
+    match /clawdbot_usage/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false; // Server-side only
+    }
+    
+    // ── Conversations & History (strict: own data only) ──────────
+    
+    match /conversations/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    match /conversation_history/{docId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow write: if false; // Server-side only
+    }
+    
+    match /chat_history/{docId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow write: if false; // Server-side only
+    }
+    
+    // ── Artifacts (strict: own data only) ────────────────────────
+    
+    match /artifacts/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // ── Agents (read own only, write own only) ───────────────────
+    
+    match /agents/{agentId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+    
+    // ── Channel Connections (strict: own data only) ──────────────
+
+    match /channel_connections/{docId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+    
+    // ── Bridge Tokens (strict: own data only) ────────────────────
+    
+    match /bridge_tokens/{tokenId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow write: if false; // Server-side only
+    }
+    
+    // ── Subscriptions (read own only) ────────────────────────────
+    
+    match /subscriptions/{docId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow write: if false; // Managed by Stripe webhooks
+    }
+    
+    // ── Tasks & Executions (own data only) ───────────────────────
+
+    match /tasks/{taskId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+    
+    match /task_executions/{docId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow write: if false; // Server-side only
+    }
+    
+    // ── Documents (own data only) ────────────────────────────────
+
+    match /documents/{docId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+    
+    match /user_documents/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // ── Admin & System (no client access) ────────────────────────
+    
+    match /admin_logs/{document=**} {
+      allow read, write: if false; // Admin SDK only
+    }
+    
+    match /system/{document=**} {
+      allow read, write: if false; // Admin SDK only
+    }
+    
+    match /clawdbot_events/{document=**} {
+      allow read, write: if false; // Admin SDK only
+    }
+    
+    match /user_stats/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if false; // Admin SDK only
+    }
+  }
+}

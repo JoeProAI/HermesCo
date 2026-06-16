@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "agent": {
+    "id": "launchpad",
+    "name": "Launchpad OpenClaw",
+    "model": "openrouter/anthropic/claude-sonnet-4-6"
+  },
+  "gateway": {
+    "port": 42069,
+    "bind": "0.0.0.0",
+    "auth": {
+      "mode": "token-from-env",
+      "envVar": "LAUNCHPAD_GATEWAY_TOKEN"
+    }
+  },
+  "env": {},
+  "memory": {
+    "backend": "filesystem",
+    "path": "/workspace/.openclaw/memory"
+  },
+  "skills": {
+    "directory": "/workspace/.openclaw/skills",
+    "enabled": []
+  },
+  "update": {
+    "checkOnStart": false,
+    "auto": {
+      "enabled": false
+    }
+  }
+}

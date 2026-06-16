@@ -1,0 +1,24 @@
+{
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.clawd.run" }],
+      "destination": "https://clawd.run/:path*",
+      "permanent": true
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/usage-check",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/expire-trials",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/launchpad-usage-tick",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

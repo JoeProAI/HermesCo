@@ -1,0 +1,37 @@
+# Template fly.toml for the launchpad-hermes app.
+#
+# This is the *app-level* config. Per-user machines are created
+# programmatically via the Fly Machines API in src/lib/launchpad/fly.ts —
+# they inherit the app config but get their own env vars (LAUNCHPAD_USER_ID,
+# LAUNCHPAD_LLM_KEY, DAYTONA_API_KEY, etc.) per-machine.
+#
+# Auto-stop semantics:
+#   auto_stop_machines = "suspend" — pause the VM (preserves memory state,
+#   wakes in ~300ms when traffic arrives). Costs 0 compute while suspended.
+#
+# To deploy this image to Fly:
+#   fly deploy --config fly.toml --image joeproai/launchpad-hermes:0.14.2
+
+app = "clawd-launchpad-hermes"
+primary_region = "iad"
+
+[build]
+  image = "joeproai/launchpad-hermes:0.14.2"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 25
+    hard_limit = 50
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

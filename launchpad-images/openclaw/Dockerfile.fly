@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1.6
+#
+# Launchpad OpenClaw — Fly.io edition
+#
+# Runs the *native* OpenClaw Control UI (the gateway's web dashboard) with
+# WebSockets, served over Fly's WS-capable edge proxy. The real OpenClaw
+# dashboard: channels, skills, model providers (incl. xAI/Grok), sessions.
+#
+# Verified (openclaw 2026.5.28):
+#   openclaw gateway --bind lan --port 8080 --auth token --allow-unconfigured
+#   binds 0.0.0.0:8080 and serves GET / -> 200 "OpenClaw Control",
+#   /dashboard, /health (200 json), plus the WebSocket gateway.
+#
+# Start script handles the two hosting requirements:
+#   1. LAN bind is refused without auth -> per-user gateway token.
+#   2. Control UI rejects cross-origin WS/API unless the public origin is in
+#      gateway.controlUi.allowedOrigins -> seeded with this machine's fly host.
+FROM node:22-slim AS base
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    HOME=/workspace \
+    OPENCLAW_HOME=/workspace/.openclaw
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git curl ca-certificates tini iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+ARG OPENCLAW_VERSION=2026.6.5
+RUN npm i -g "openclaw@${OPENCLAW_VERSION}" --no-fund --no-audit \
+ && npm cache clean --force
+
+COPY start.fly.sh /opt/launchpad/start.sh
+RUN chmod +x /opt/launchpad/start.sh
+
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/health >/dev/null \
+      || curl -fsS http://127.0.0.1:8080/ >/dev/null || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/opt/launchpad/start.sh"]

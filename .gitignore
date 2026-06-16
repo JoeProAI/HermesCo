@@ -1,0 +1,57 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (NEVER commit these - they contain API keys)
+.env*
+.env.local
+.env.fresh
+.env.prod
+.env.pulled
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# internal admin scripts (not for OSS)
+/internal/
+
+# legacy page backups (kept locally, not shipped)
+*.legacy.bak
+
+
+# local backup snapshots — never track or deploy
+_LOCAL_BACKUP_*/
+_UNPUSHED_*/

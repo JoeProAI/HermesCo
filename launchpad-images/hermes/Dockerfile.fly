@@ -1,0 +1,94 @@
+# syntax=docker/dockerfile:1.6
+#
+# Launchpad Hermes — Fly.io edition
+#
+# Architecture:
+#   - This image runs the Hermes dashboard + agent (WS endpoints).
+#   - Fly's L4-aware proxy handles TLS + WebSocket upgrades natively.
+#   - Hermes's terminal backend is configured to "daytona", so all shell
+#     commands execute in an ephemeral Daytona workspace (HTTP exec, no WS
+#     needed). That's where the $20k Daytona credit pool gets used.
+#
+# The previous Dockerfile shipped cloudflared. That's gone — Fly provides
+# the public URL (https://<machine>.<app>.fly.dev) directly.
+FROM python:3.12-slim AS base
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    HERMES_HOME=/workspace/.hermes \
+    HOME=/workspace
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git curl ca-certificates build-essential tini iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js: kept for agent tools/skills that shell out to node/npm. The chat
+# tab no longer needs it -- the web_server.py patch below points the chat PTY at
+# the plain-text `hermes chat` REPL instead of the ink TUI (ui-tui).
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+# Hermes install (uses the published wheel; pin a known-good version)
+ARG HERMES_VERSION=0.14.0
+RUN python -m venv /opt/hermes-venv \
+ && /opt/hermes-venv/bin/pip install --no-cache-dir --upgrade pip \
+ && /opt/hermes-venv/bin/pip install --no-cache-dir "hermes-agent[web,pty,cli]==${HERMES_VERSION}" \
+ && /opt/hermes-venv/bin/pip install --no-cache-dir fastapi 'uvicorn[standard]' websockets python-multipart daytona
+
+# Chat tab fix: the dashboard chat PTY hardcodes the ink TUI (ui-tui), which the
+# pip wheel does not ship (its @hermes/ink dep is 404 on npm) -> "session ended".
+# Repoint the chat PTY at the plain-text REPL (`hermes chat`, cli.py); no ui-tui
+# needed. grep -qF fails the build if either source line ever moves upstream.
+RUN WS=/opt/hermes-venv/lib/python3.12/site-packages/hermes_cli/web_server.py \
+ && sed -i 's#argv, cwd = _make_tui_argv(PROJECT_ROOT / "ui-tui", tui_dev=False)#argv = [sys.executable, "-m", "hermes_cli.main", "chat"]; cwd = str(PROJECT_ROOT)#' "$WS" \
+ && sed -i 's#env.setdefault("HERMES_TUI_DISABLE_MOUSE", "1")#env.setdefault("HERMES_TUI_DISABLE_MOUSE", "1"); env["HERMES_TUI"] = "0"#' "$WS" \
+ && grep -qF 'hermes_cli.main", "chat"' "$WS" \
+ && grep -qF 'env["HERMES_TUI"] = "0"' "$WS"
+
+# Chat scrollback: the shipped dashboard inits xterm.js with scrollback:0, so the
+# terminal pins to the bottom with no scroll-up. The REPL is inline (full_screen
+# =False) so raising xterm scrollback is enough. Asserts the token is unique.
+RUN WD=/opt/hermes-venv/lib/python3.12/site-packages/hermes_cli/web_dist \
+ && F="$(grep -rlF 'scrollback:0' "$WD"/assets/ | head -1)" \
+ && test -n "$F" && test "$(grep -oF 'scrollback:0' "$F" | wc -l)" = "1" \
+ && sed -i 's/scrollback:0/scrollback:5000/' "$F" \
+ && grep -qF 'scrollback:5000' "$F"
+
+# Model picker lock: pin Hermes's OpenRouter model list to the two models the
+# platform allows (matches the OpenRouter "launchpad-metered" guardrail:
+# x-ai/grok-4.3 + x-ai/grok-4.20-multi-agent). Without this the dashboard
+# picker renders OpenRouter's full ~31-model catalog from
+# hermes_cli/models.py::OPENROUTER_MODELS; picking a non-Grok model would be
+# rejected at the key but still confuses users. Slice-assign mutates the list
+# in place so every prior `from hermes_cli.models import OPENROUTER_MODELS`
+# binding (e.g. model_switch.list_authenticated_providers) sees the trim. The
+# python assertion fails the build if the symbol ever moves upstream.
+RUN <<'EOF'
+set -eu
+MODELS=/opt/hermes-venv/lib/python3.12/site-packages/hermes_cli/models.py
+cat >> "$MODELS" <<'PY'
+
+# launchpad: restrict the OpenRouter model picker to platform-allowed models.
+OPENROUTER_MODELS[:] = [
+    ("x-ai/grok-4.3", "recommended"),
+    ("x-ai/grok-4.20-multi-agent", "multi-agent"),
+]
+PY
+/opt/hermes-venv/bin/python -c "from hermes_cli.models import OPENROUTER_MODELS as m; ids=[x for x,_ in m]; assert ids==['x-ai/grok-4.3','x-ai/grok-4.20-multi-agent'], ids; print('hermes openrouter picker pinned to', ids)"
+EOF
+
+ENV PATH="/opt/hermes-venv/bin:${PATH}"
+
+COPY start.fly.sh /opt/launchpad/start.sh
+RUN chmod +x /opt/launchpad/start.sh
+
+# Fly will map external 443 -> internal 8080 via fly.toml services.
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/api/status -H "Authorization: Bearer ${HERMES_HEALTHCHECK_TOKEN:-noop}" >/dev/null || curl -fsS http://127.0.0.1:8080/ >/dev/null || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/opt/launchpad/start.sh"]

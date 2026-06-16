@@ -1,0 +1,444 @@
+/* clawd.run landing — Neural Salvage aesthetic
+   Zero radius. Zero glow. Hard borders. Typography-driven. */
+
+.landing {
+  min-height: 100vh;
+  background: #08080f;
+  color: #e0e0ee;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+}
+
+/* ── Nav ── */
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 48px;
+  border-bottom: 1px solid #1a1a2e;
+}
+
+.logo {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  text-decoration: none;
+  color: #e0e0ee;
+}
+
+.logoDot {
+  color: #B87333;
+}
+
+.navLinks {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+.navLink {
+  font-size: 13px;
+  color: #55556a;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.navLink:hover {
+  color: #e0e0ee;
+}
+
+.navCta {
+  font-size: 13px;
+  font-weight: 600;
+  color: #B87333;
+  text-decoration: none;
+  border: 1px solid #B87333;
+  padding: 6px 16px;
+  transition: background 0.15s;
+}
+
+.navCta:hover {
+  background: rgba(184, 115, 51, 0.1);
+}
+
+/* ── Hero ── */
+.hero {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 96px 48px 64px;
+  text-align: center;
+}
+
+.label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #B87333;
+  margin-bottom: 24px;
+}
+
+.h1 {
+  font-size: clamp(36px, 5vw, 64px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -1px;
+  margin-bottom: 24px;
+  color: #e0e0ee;
+}
+
+.h1Accent {
+  color: #B87333;
+}
+
+.lead {
+  font-size: 18px;
+  color: #55556a;
+  line-height: 1.7;
+  max-width: 540px;
+  margin: 0 auto 40px;
+}
+
+.heroActions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btnPrimary {
+  background: #B87333;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 28px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity 0.15s;
+  border: none;
+}
+
+.btnPrimary:hover {
+  opacity: 0.85;
+}
+
+.btnGhost {
+  border: 1px solid #1a1a2e;
+  color: #e0e0ee;
+  font-size: 14px;
+  padding: 12px 28px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: border-color 0.15s;
+}
+
+.btnGhost:hover {
+  border-color: #55556a;
+}
+
+.heroNote {
+  font-size: 12px;
+  color: #55556a;
+  margin-top: 24px;
+  letter-spacing: 0.02em;
+}
+
+/* ── Social proof ── */
+.logos {
+  text-align: center;
+  padding: 48px;
+  border-top: 1px solid #1a1a2e;
+  border-bottom: 1px solid #1a1a2e;
+}
+
+.logosLabel {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #55556a;
+  margin-bottom: 24px;
+}
+
+.logosRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  flex-wrap: wrap;
+}
+
+.logosItem {
+  font-size: 14px;
+  font-weight: 600;
+  color: #55556a;
+  letter-spacing: -0.01em;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.logosItem:hover {
+  opacity: 1;
+}
+
+/* ── Sections ── */
+.section {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 80px 48px;
+  border-top: 1px solid #1a1a2e;
+}
+
+.sectionLabel {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #55556a;
+  margin-bottom: 48px;
+}
+
+.h2 {
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+  color: #e0e0ee;
+  margin-bottom: 16px;
+}
+
+/* ── Features ── */
+.featuresGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: #1a1a2e;
+  border: 1px solid #1a1a2e;
+  margin-top: 48px;
+}
+
+.featureCard {
+  background: #08080f;
+  padding: 28px;
+}
+
+.featureCard:hover {
+  background: #0f0f1a;
+}
+
+.featureIcon {
+  color: #B87333;
+  margin-bottom: 16px;
+}
+
+.featureTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #e0e0ee;
+  margin-bottom: 8px;
+}
+
+.featureDesc {
+  font-size: 14px;
+  color: #55556a;
+  line-height: 1.6;
+}
+
+/* ── Steps ── */
+.stepsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+  margin-top: 48px;
+}
+
+.step {
+  border: 1px solid #1a1a2e;
+  padding: 28px;
+}
+
+.stepNum {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: #B87333;
+  margin-bottom: 12px;
+}
+
+.stepTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #e0e0ee;
+  margin-bottom: 10px;
+}
+
+.stepDesc {
+  font-size: 14px;
+  color: #55556a;
+  line-height: 1.6;
+}
+
+/* ── Pricing ── */
+.pricingGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: #1a1a2e;
+  border: 1px solid #1a1a2e;
+  max-width: 960px;
+  margin: 48px auto 0;
+}
+
+.priceCard {
+  text-align: center;
+  padding: 28px 20px;
+  background: #08080f;
+  position: relative;
+}
+
+.priceCard:hover {
+  background: #0f0f1a;
+}
+
+.priceCardHl {
+  border-top: 2px solid #B87333;
+}
+
+.priceBadge {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #B87333;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.priceName {
+  font-weight: 600;
+  font-size: 14px;
+  color: #e0e0ee;
+  margin-bottom: 12px;
+}
+
+.priceAmount {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  color: #e0e0ee;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.priceCardHl .priceAmount {
+  color: #B87333;
+}
+
+.priceSub {
+  font-size: 14px;
+  font-weight: 400;
+  color: #55556a;
+  margin-left: 2px;
+}
+
+.priceLine {
+  font-size: 14px;
+  color: #55556a;
+  line-height: 1.5;
+  margin-bottom: 24px;
+  min-height: 42px;
+}
+
+.pricingNote {
+  margin-top: 32px;
+  font-size: 14px;
+  color: #55556a;
+  text-align: center;
+}
+
+.pricingLink {
+  color: #B87333;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pricingLink:hover {
+  color: #fb923c;
+}
+
+.btnFull {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+}
+
+/* ── Final CTA ── */
+.finalCta {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 96px 48px;
+  border-top: 1px solid #1a1a2e;
+  text-align: center;
+}
+
+.finalSub {
+  font-size: 16px;
+  color: #55556a;
+  margin-bottom: 36px;
+}
+
+/* ── Footer ── */
+.footer {
+  border-top: 1px solid #1a1a2e;
+  padding: 32px 48px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.footerLinks {
+  display: flex;
+  gap: 24px;
+}
+
+.footerLink {
+  font-size: 13px;
+  color: #55556a;
+  text-decoration: none;
+}
+
+.footerLink:hover {
+  color: #e0e0ee;
+}
+
+.footerCopy {
+  font-size: 12px;
+  color: #333348;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .featuresGrid { grid-template-columns: repeat(2, 1fr); }
+  .pricingGrid { grid-template-columns: repeat(2, 1fr); }
+  .stepsGrid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 600px) {
+  .nav { padding: 16px 24px; }
+  .hero { padding: 64px 24px 48px; }
+  .section { padding: 60px 24px; }
+  .finalCta { padding: 60px 24px; }
+  .footer { padding: 24px; }
+  .h1 { font-size: 36px; }
+  .heroActions { flex-direction: column; }
+  .btnPrimary, .btnGhost { width: 100%; justify-content: center; }
+  .featuresGrid { grid-template-columns: 1fr; }
+  .pricingGrid { grid-template-columns: 1fr; }
+  .navLinks > *:not(:last-child) { display: none; }
+}

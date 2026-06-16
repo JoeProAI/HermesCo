@@ -1,0 +1,9 @@
+name = "clawd-wake-splash"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Can't use route pattern with mid-hostname wildcard (agent-*.clawd.run).
+# Instead, use a catch-all route on the zone and filter in the worker.
+routes = [
+  { pattern = "*.clawd.run/*", zone_name = "clawd.run" }
+]

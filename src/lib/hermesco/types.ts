@@ -1,0 +1,98 @@
+// HermesCo — core domain types.
+// An autonomous Hermes agent that EARNS and SPENDS under a human-in-the-loop
+// Treasury with hard caps, so the business can never lose money.
+
+export type ModelKey = "hermes" | "nemotron";
+
+export type ProposalType = "earn" | "spend";
+
+export type ProposalStatus =
+  | "pending" // awaiting human decision
+  | "approved" // human approved, about to execute
+  | "denied" // human (or policy) rejected
+  | "executed" // money moved (or recorded)
+  | "failed"; // execution failed / refused by a hard cap
+
+export type RiskLevel = "safe" | "review" | "blocked";
+
+export interface Proposal {
+  id: string;
+  workspaceId: string;
+  type: ProposalType;
+  title: string;
+  description: string;
+  amountUsd: number; // positive magnitude
+  counterparty: string; // customer (earn) or vendor (spend)
+  status: ProposalStatus;
+  autoApproved: boolean;
+  risk: RiskLevel;
+  safetyReason: string;
+  stripeRef?: string; // payment link url / payment intent id
+  stripeKind?: string; // "payment_link" | "payment_intent" | "simulated"
+  createdAt: number;
+  decidedAt?: number;
+  decidedBy?: string; // "policy" | "human"
+  executedAt?: number;
+  error?: string;
+}
+
+export interface LedgerEntry {
+  id: string;
+  workspaceId: string;
+  proposalId?: string;
+  type: ProposalType;
+  amountUsd: number; // signed: earn positive, spend negative
+  description: string;
+  stripeRef?: string;
+  at: number;
+}
+
+// The hard caps — the "can't lose money" guarantee. Enforced at execution time,
+// not just at proposal time, so even a human-approved move cannot breach them.
+export interface Budget {
+  startingCapitalUsd: number;
+  maxSpendPerActionUsd: number; // single-spend hard cap (inviolable)
+  autoApproveUnderUsd: number; // spends strictly below this auto-approve
+  dailySpendCapUsd: number; // total spend per day hard cap
+  minReserveUsd: number; // balance may never drop below this
+}
+
+export interface TreasuryState {
+  workspaceId: string;
+  budget: Budget;
+  balanceUsd: number; // startingCapital + sum(ledger)
+  revenueUsd: number; // sum of earns
+  expenseUsd: number; // sum of spends (magnitude)
+  netProfitUsd: number; // revenue - expense
+  spentTodayUsd: number;
+  pendingCount: number;
+  proposals: Proposal[]; // newest first
+  ledger: LedgerEntry[]; // newest first
+  stripeMode: "test" | "live" | "none";
+}
+
+export type AgentEventKind =
+  | "thought"
+  | "tool_call"
+  | "tool_result"
+  | "message"
+  | "proposal"
+  | "awaiting_approval"
+  | "error";
+
+export interface AgentEvent {
+  kind: AgentEventKind;
+  text?: string;
+  toolName?: string;
+  toolArgs?: Record<string, unknown>;
+  proposalId?: string;
+  at: number;
+}
+
+export interface AgentTurnResult {
+  events: AgentEvent[];
+  assistant: string; // final message to the human ("" if paused for approval)
+  awaitingApproval: boolean;
+  model: ModelKey;
+  state: TreasuryState;
+}

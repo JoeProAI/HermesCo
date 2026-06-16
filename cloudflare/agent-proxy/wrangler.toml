@@ -1,0 +1,7 @@
+name = "clawd-agent-proxy"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+routes = [
+  { pattern = "*.clawd.run/*", zone_name = "clawd.run" }
+]

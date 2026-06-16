@@ -1,0 +1,20 @@
+# Launchpad OpenClaw — Fly.io app template.
+# Live machine config is applied by src/lib/launchpad/fly.ts at provision time
+# (services -> internal_port 8080, autostop off, min_machines_running 1).
+# This file is for manual `fly deploy` bootstrapping of the app/image.
+app = "lp-openclaw"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.fly"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1024"
