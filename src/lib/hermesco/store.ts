@@ -148,6 +148,32 @@ export async function appendLedger(e: LedgerEntry): Promise<void> {
   memWs(e.workspaceId).ledger.push(e);
 }
 
+// Atomic, idempotent deposit. On Convex this is a single serializable mutation
+// (dedup + insert), so concurrent retries can't double-credit. The in-memory
+// fallback dedups against the local ledger to keep the same guarantee.
+export async function recordDepositOnce(
+  e: LedgerEntry,
+  stripeRef: string,
+): Promise<{ duplicate: boolean }> {
+  if (convexEnabled) {
+    try {
+      return (await client().mutation(t.recordDepositOnce, {
+        workspaceId: e.workspaceId,
+        entryId: e.id,
+        stripeRef,
+        data: e,
+        ts: e.at,
+      })) as { duplicate: boolean };
+    } catch (err) {
+      disableConvex(err);
+    }
+  }
+  const ws = memWs(e.workspaceId);
+  if (ws.ledger.some((x) => x.stripeRef === stripeRef)) return { duplicate: true };
+  ws.ledger.push(e);
+  return { duplicate: false };
+}
+
 export async function clearWorkspace(id: string): Promise<void> {
   if (convexEnabled) {
     try {

@@ -86,6 +86,30 @@ export const appendLedger = mutation({
   },
 });
 
+// Atomic, idempotent deposit. Convex mutations are serializable, so the
+// stripeRef dedup check and the insert happen as one transaction - a refresh
+// or webhook retry hitting at the same time can never double-credit a deposit.
+export const recordDepositOnce = mutation({
+  args: {
+    workspaceId: v.string(),
+    entryId: v.string(),
+    stripeRef: v.string(),
+    data: v.any(),
+    ts: v.number(),
+  },
+  handler: async (ctx, { workspaceId, entryId, stripeRef, data, ts }) => {
+    const existing = await ctx.db
+      .query("treasuryLedger")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+      .collect();
+    if (existing.some((r) => r.data?.stripeRef === stripeRef)) {
+      return { duplicate: true };
+    }
+    await ctx.db.insert("treasuryLedger", { workspaceId, entryId, data, ts });
+    return { duplicate: false };
+  },
+});
+
 export const clearWorkspace = mutation({
   args: { workspaceId: v.string() },
   handler: async (ctx, { workspaceId }) => {

@@ -9,6 +9,10 @@ RUN npm ci
 
 # Build
 COPY . .
+# Public Convex deployment URL. Inlined at build so the client ConvexProvider
+# wires up; also set at runtime (fly.toml [env]) for the server-side store.
+ARG NEXT_PUBLIC_CONVEX_URL
+ENV NEXT_PUBLIC_CONVEX_URL=$NEXT_PUBLIC_CONVEX_URL
 RUN npm run build
 
 ENV NODE_ENV=production

@@ -1299,19 +1299,39 @@ function TreasuryPanel({
         <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 400, fontSize: 20, margin: 0 }}>
           Treasury
         </h3>
-        <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            letterSpacing: "0.1em",
-            color: state.stripeMode === "test" ? TEAL : state.stripeMode === "live" ? GOLD : "rgba(237,230,217,0.4)",
-            border: `1px solid ${state.stripeMode === "none" ? "rgba(237,230,217,0.18)" : "rgba(91,214,192,0.4)"}`,
-            borderRadius: 999,
-            padding: "3px 9px",
-          }}
-        >
-          STRIPE: {state.stripeMode.toUpperCase()}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              letterSpacing: "0.1em",
+              color: state.backend === "convex" ? SUCCESS : "rgba(237,230,217,0.4)",
+              border: `1px solid ${state.backend === "convex" ? "rgba(34,197,94,0.4)" : "rgba(237,230,217,0.18)"}`,
+              borderRadius: 999,
+              padding: "3px 9px",
+            }}
+            title={
+              state.backend === "convex"
+                ? "Durable Convex persistence: balances and ledger survive restarts and redeploys."
+                : "In-memory fallback: state is not durable across redeploys."
+            }
+          >
+            {state.backend === "convex" ? "PERSISTED: CONVEX" : "PERSIST: MEMORY"}
+          </span>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              letterSpacing: "0.1em",
+              color: state.stripeMode === "test" ? TEAL : state.stripeMode === "live" ? GOLD : "rgba(237,230,217,0.4)",
+              border: `1px solid ${state.stripeMode === "none" ? "rgba(237,230,217,0.18)" : "rgba(91,214,192,0.4)"}`,
+              borderRadius: 999,
+              padding: "3px 9px",
+            }}
+          >
+            STRIPE: {state.stripeMode.toUpperCase()}
+          </span>
+        </div>
       </div>
 
       {/* headline numbers */}

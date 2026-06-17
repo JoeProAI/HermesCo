@@ -23,6 +23,7 @@ import {
   listLedger,
   listProposals,
   putProposal,
+  recordDepositOnce,
   setBudget,
   storageBackend,
 } from "./store";
@@ -89,6 +90,7 @@ export async function getState(id: string): Promise<TreasuryState> {
     proposals,
     ledger,
     stripeMode: stripeMode(),
+    backend: storageBackend(),
   };
 }
 
@@ -262,10 +264,6 @@ export async function recordDeposit(
   input: { amountUsd: number; stripeRef: string; description?: string },
 ): Promise<{ duplicate: boolean; entry?: LedgerEntry; state: TreasuryState }> {
   await ensureWorkspace(id);
-  const ledger = await listLedger(id);
-  if (ledger.some((e) => e.stripeRef === input.stripeRef)) {
-    return { duplicate: true, state: await getState(id) };
-  }
   const entry: LedgerEntry = {
     id: `led_dep_${randomUUID().slice(0, 8)}`,
     workspaceId: id,
@@ -275,7 +273,10 @@ export async function recordDeposit(
     stripeRef: input.stripeRef,
     at: Date.now(),
   };
-  await appendLedger(entry);
+  const { duplicate } = await recordDepositOnce(entry, input.stripeRef);
+  if (duplicate) {
+    return { duplicate: true, state: await getState(id) };
+  }
   return { duplicate: false, entry, state: await getState(id) };
 }
 

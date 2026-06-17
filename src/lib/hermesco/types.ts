@@ -72,6 +72,7 @@ export interface TreasuryState {
   proposals: Proposal[]; // newest first
   ledger: LedgerEntry[]; // newest first
   stripeMode: "test" | "live" | "none";
+  backend: "convex" | "memory"; // durable Convex store vs in-process fallback
 }
 
 export type AgentEventKind =
