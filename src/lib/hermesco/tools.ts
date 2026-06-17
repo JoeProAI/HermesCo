@@ -1,10 +1,10 @@
-// HermesCo — the agent's tools. Every money tool routes through the Treasury,
+// HermesCo, the agent's tools. Every money tool routes through the Treasury,
 // so the agent can act autonomously while a human stays in control of the cash.
 
 import type { Proposal } from "./types";
 import { collectOfferRevenue, createSpend, getState } from "./treasury";
 import { createOffer } from "./stripe-skills";
-import { runInSandbox } from "./sandbox";
+import { runForAgent } from "./sandbox";
 
 export interface ToolSpec {
   name: string;
@@ -26,7 +26,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     name: "collect_payment",
     description:
-      "Reconcile the REAL revenue a customer has actually paid on an offer's Stripe payment link. Pass the payment_link_id returned by create_offer. Credits only money Stripe confirms was collected — nothing is recorded until a real customer pays the link.",
+      "Reconcile the REAL revenue a customer has actually paid on an offer's Stripe payment link. Pass the payment_link_id returned by create_offer. Credits only money Stripe confirms was collected. Nothing is recorded until a real customer pays the link.",
     parameters: { payment_link_id: "string (the id returned by create_offer)" },
   },
   {
@@ -38,8 +38,8 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     name: "run_in_sandbox",
     description:
-      "Do real work on the HermesCo execution substrate: a fresh, isolated Daytona Linux sandbox. Pass a bash `command` to run (e.g. write+run a Python script, build a file, call a CLI). Returns the real exit code and stdout.",
-    parameters: { command: "string (bash command to run)", task: "string (short label of what this accomplishes)" },
+      "Do real work on YOUR OWN machine, the dedicated, multi-core Fly machine you were spun up on (Python 3.12, Node 22, git, bash). Pass a bash `command` to run (e.g. write+run a script, build a file, clone a repo, call a CLI). Returns the real exit code and stdout. Your machine persists between calls, so files you create stay.",
+    parameters: { command: "string (bash command to run on your machine)", task: "string (short label of what this accomplishes)" },
   },
 ];
 
@@ -148,13 +148,13 @@ export async function executeTool(
       });
       const human =
         proposal.status === "pending"
-          ? "AWAITING HUMAN APPROVAL — pause and tell the human what you need and why."
+          ? "AWAITING HUMAN APPROVAL. Pause and tell the human what you need and why."
           : proposal.status === "denied"
-            ? "REFUSED by the Treasury — do not retry this spend."
+            ? "REFUSED by the Treasury. Do not retry this spend."
             : proposal.status === "executed"
               ? "AUTO-APPROVED and paid."
               : proposal.status === "failed"
-                ? "FAILED a hard cap — do not retry."
+                ? "FAILED a hard cap. Do not retry."
                 : proposal.status;
       return {
         proposal,
@@ -182,12 +182,12 @@ export async function executeTool(
         };
       }
       try {
-        const run = await runInSandbox(command);
+        const run = await runForAgent(workspaceId, command, { goal: task });
         return {
           observation: JSON.stringify({
             ok: run.ok,
-            substrate: "daytona",
-            sandbox_id: run.sandboxId,
+            substrate: run.substrate,
+            machine_id: run.sandboxId,
             task,
             command: run.command,
             exit_code: run.exitCode,
@@ -200,8 +200,7 @@ export async function executeTool(
         return {
           observation: JSON.stringify({
             ok: false,
-            substrate: "daytona",
-            error: `Sandbox unavailable: ${msg}`,
+            error: `Execution substrate unavailable: ${msg}`,
           }),
         };
       }

@@ -1,9 +1,10 @@
-// HermesCo — the agent loop. Hermes (or Nemotron) drives the business via a
-// unified <tool_call> text protocol parsed server-side. The loop pauses the
-// moment a spend needs a human, surfacing the proposal to the Treasury console.
+// HermesCo, the agent loop. Hermes 4 405B (Nous) drives the business via a
+// native <tool_call> text protocol parsed server-side; NVIDIA Nemotron screens
+// every spend underneath (see safety.ts). The loop pauses the moment a spend
+// needs a human, surfacing the proposal to the Treasury console.
 
-import type { AgentEvent, AgentTurnResult, ModelKey } from "./types";
-import { chatComplete, ChatMessage, DEFAULT_MODEL, MODELS } from "./models";
+import type { AgentEvent, AgentTurnResult } from "./types";
+import { chatComplete, ChatMessage, HERMES_MODEL } from "./models";
 import { TOOL_SPECS, executeTool } from "./tools";
 import { getState } from "./treasury";
 
@@ -75,27 +76,30 @@ function systemPrompt(treasurySnapshot: string): string {
       )}}`,
   ).join("\n");
   return [
-    "You are HERMES, the autonomous operator of HermesCo — a one-agent company.",
+    "You are HERMES, the autonomous operator of HermesCo, a one-agent company.",
     "You EARN revenue and SPEND on tools to deliver client work, all under a human-in-the-loop",
     "Treasury with hard caps, so the business can NEVER lose money.",
-    "HermesCo runs on NVIDIA Nemotron + Stripe, and was built by Cognition AI / Devin.",
+    "You run on your OWN dedicated, multi-core machine and act through one pipeline:",
+    "Hermes (you, Nous Research) decide → NVIDIA Nemotron (NemoClaw) screens every spend →",
+    "Stripe settles the money. HermesCo was built by Cognition AI / Devin.",
     "",
     "PRINCIPLES:",
     "- The Treasury starts at $0 and holds only real capital the human deposited plus what you earn.",
-    "  If the balance is too low to act, EARN first or tell the human to deposit funds — never",
+    "  If the balance is too low to act, EARN first or tell the human to deposit funds. Never",
     "  assume money that isn't there.",
     "- EARN is real money in: create_offer stands up a Stripe product + shareable Payment Link; a real",
     "  customer pays that link; then collect_payment with the payment_link_id credits the revenue Stripe",
     "  confirms was actually collected. Nothing is recorded until a real payment lands.",
     "- Earn before you spend; prefer revenue-generating actions.",
-    "- run_in_sandbox runs a REAL bash command in an isolated Linux sandbox — pass a concrete",
-    "  `command` (e.g. write a file then run it) plus a short `task` label. Use it to do real work.",
+    "- run_in_sandbox runs a REAL bash command on YOUR OWN machine (Python 3.12, Node 22, git).",
+    "  pass a concrete `command` (e.g. write a file then run it) plus a short `task` label. Your",
+    "  machine persists between calls, so do real, multi-step work on it.",
     "- ALWAYS check_treasury before proposing a spend.",
     "- You may surface any spend the human asks for. The Treasury (NemoClaw) makes the",
-    "  final ruling and will REFUSE anything over a hard cap — do not pre-refuse on your",
+    "  final ruling and will REFUSE anything over a hard cap. Do not pre-refuse on your",
     "  own; propose it, let the Treasury decide, then explain the outcome plainly.",
     "- Be concise and decisive. One short reasoning line, then act.",
-    "- Never put prose inside a <tool_call> tag — tool calls contain ONLY JSON.",
+    "- Never put prose inside a <tool_call> tag. Tool calls contain ONLY JSON.",
     "",
     "LIVE TREASURY:",
     treasurySnapshot,
@@ -108,7 +112,7 @@ function systemPrompt(treasurySnapshot: string): string {
     "To call a tool, output ONLY:",
     '<tool_call>{"name":"<tool>","arguments":{...}}</tool_call>',
     "After each call you will receive a <tool_response>{...}</tool_response>.",
-    "When the task is complete — or when a spend is AWAITING HUMAN APPROVAL — STOP calling tools",
+    "When the task is complete, or when a spend is AWAITING HUMAN APPROVAL, STOP calling tools",
     "and write a short plain-text message to the human. If awaiting approval, say exactly what you",
     "need approved and why.",
   ].join("\n");
@@ -131,12 +135,10 @@ async function snapshot(workspaceId: string): Promise<string> {
 
 export async function runTurn(opts: {
   workspaceId: string;
-  model?: ModelKey;
   message: string;
   history?: ChatMessage[];
 }): Promise<AgentTurnResult> {
-  const modelKey: ModelKey = opts.model && MODELS[opts.model] ? opts.model : DEFAULT_MODEL;
-  const modelId = MODELS[modelKey].id;
+  const modelId = HERMES_MODEL.id;
   const events: AgentEvent[] = [];
 
   const sys = systemPrompt(await snapshot(opts.workspaceId));
@@ -194,7 +196,7 @@ export async function runTurn(opts: {
       const { content: askContent } = await chatComplete({ modelId, messages, maxTokens: 300 });
       assistant =
         cleanText(askContent) ||
-        `I need your approval to spend $${outcome.proposal.amountUsd} on ${outcome.proposal.counterparty} — it's within all hard caps. Approve it in the Treasury to continue.`;
+        `I need your approval to spend $${outcome.proposal.amountUsd} on ${outcome.proposal.counterparty}. It is within all hard caps. Approve it in the Treasury to continue.`;
       events.push({ kind: "message", text: assistant, at: Date.now() });
       break;
     }
@@ -206,7 +208,7 @@ export async function runTurn(opts: {
   }
 
   const state = await getState(opts.workspaceId);
-  return { events, assistant, awaitingApproval, model: modelKey, state };
+  return { events, assistant, awaitingApproval, state };
 }
 
 function round(n: number): number {

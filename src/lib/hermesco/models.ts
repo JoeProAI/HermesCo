@@ -1,42 +1,39 @@
-// HermesCo — model registry + OpenRouter chat helper.
+// HermesCo - model registry + OpenRouter chat helper.
 //
-// The brain is Hermes 4 405B (Nous Research). Because its only OpenRouter
-// provider does not expose native function-calling, HermesCo drives tools via
-// Hermes's own native <tool_call> XML protocol, parsed server-side. The exact
-// same text protocol is used for Nemotron 3 Ultra (NVIDIA), giving one
-// provider-agnostic tool path and full server-side control over the money gate.
-
-import type { ModelKey } from "./types";
+// There is no model switch. HermesCo runs ONE unified pipeline:
+//   Hermes 4 405B (Nous) decides  →  Nemotron (NVIDIA) screens  →  Stripe settles.
+// Hermes 4 405B is the operator brain. Because its only OpenRouter provider does
+// not expose native function-calling, HermesCo drives tools via Hermes's own
+// native <tool_call> XML protocol, parsed server-side. NVIDIA Nemotron is the
+// always-on NemoClaw layer riding underneath - it screens every spend and
+// verifies risky actions before they execute (see safety.ts). Not a choice
+// between them; a second pair of eyes that is always on.
 
 export interface ModelInfo {
-  key: ModelKey;
   id: string;
   label: string;
   vendor: string;
   blurb: string;
 }
 
-export const MODELS: Record<ModelKey, ModelInfo> = {
-  hermes: {
-    key: "hermes",
-    id: "nousresearch/hermes-4-405b",
-    label: "Hermes 4 405B",
-    vendor: "Nous Research",
-    blurb: "The messenger. Drives the business via the native Hermes tool protocol.",
-  },
-  nemotron: {
-    key: "nemotron",
-    id: "nvidia/nemotron-3-ultra-550b-a55b",
-    label: "Nemotron 3 Ultra",
-    vendor: "NVIDIA",
-    blurb: "NVIDIA's flagship. Tool-native co-pilot and NemoClaw safety screen.",
-  },
+// The operator brain.
+export const HERMES_MODEL: ModelInfo = {
+  id: "nousresearch/hermes-4-405b",
+  label: "Hermes 4 405B",
+  vendor: "Nous Research",
+  blurb: "The messenger. Decides and drives the business via the native Hermes tool protocol.",
 };
 
-export const DEFAULT_MODEL: ModelKey = "hermes";
+// The always-on NemoClaw screen/verify layer.
+export const NEMO_MODEL: ModelInfo = {
+  id: "nvidia/nemotron-3-ultra-550b-a55b",
+  label: "Nemotron 3 Ultra",
+  vendor: "NVIDIA",
+  blurb: "NVIDIA's flagship. The always-on NemoClaw safety screen on every spend.",
+};
 
 // NVIDIA model used by the NemoClaw safety screen (a Nemotron-class classifier).
-export const SAFETY_MODEL_ID = "nvidia/nemotron-3-ultra-550b-a55b";
+export const SAFETY_MODEL_ID = NEMO_MODEL.id;
 
 const OR_BASE = "https://openrouter.ai/api/v1";
 

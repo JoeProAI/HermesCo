@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { motion } from "framer-motion";
 import MessengerNetwork from "@/components/MessengerNetwork";
+import HermesMark from "@/components/HermesMark";
 
 const INK = "#0E0E10";
 const GOLD = "#E0A35A";
@@ -168,7 +168,7 @@ export default function Landing() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Image src="/hermes-emblem.png" alt="HermesCo" width={40} height={40} priority />
+          <HermesMark size={40} idPrefix="hm-nav" />
           <span
             style={{
               fontFamily: "var(--font-display)",
@@ -265,12 +265,12 @@ export default function Landing() {
             }}
           >
             HermesCo is a one-agent company. Hermes earns revenue, spends on the tools it
-            needs, and runs real operations — and every dollar is gated by a human-in-the-loop{" "}
+            needs, and runs real operations, and every dollar is gated by a human-in-the-loop{" "}
             <strong style={{ color: CREAM, fontWeight: 600 }}>Treasury</strong> with hard caps it
             physically cannot breach.
           </motion.p>
 
-          {/* live-status ribbon — terminal voice, no fabricated figures */}
+          {/* live-status ribbon (terminal voice, no fabricated figures) */}
           <motion.div
             custom={3}
             variants={fadeUp}
@@ -297,7 +297,7 @@ export default function Landing() {
                 display: "inline-block",
               }}
             />
-            TREASURY ARMED · PER-ACTION $50 · DAILY $100 · RESERVE $20 — enforced in code
+            TREASURY ARMED · PER-ACTION $50 · DAILY $100 · RESERVE $20 · enforced in code
           </motion.div>
 
           <motion.div
@@ -361,12 +361,10 @@ export default function Landing() {
                 filter: "blur(22px)",
               }}
             />
-            <Image
-              src="/hermes-emblem.png"
-              alt="HermesCo caduceus emblem"
-              width={420}
-              height={420}
-              priority
+            <HermesMark
+              size={420}
+              idPrefix="hm-hero"
+              title="HermesCo Messenger Seal"
               style={{ position: "relative", width: "min(420px, 70vw)", height: "auto" }}
             />
           </motion.div>
@@ -396,7 +394,7 @@ export default function Landing() {
             tag="01 · EARN"
             accent={GOLD}
             title="It makes money"
-            body="Hermes stands up a real offer — a Stripe product, price, and payment link — and collects customer payments for delivered work. Revenue lands on a live ledger."
+            body="Hermes stands up a real offer (a Stripe product, price, and payment link) and collects customer payments for delivered work. Revenue lands on a live ledger."
           />
           <Pillar
             index={1}
@@ -410,7 +408,7 @@ export default function Landing() {
             tag="03 · SCALE · SAFE"
             accent="#8FB7F0"
             title="At any scale"
-            body="Each agent runs on its own isolated Fly machine with a Daytona sandbox for real work, screened by an NVIDIA Nemotron safety pass — a fleet of bounded, autonomous operators."
+            body="Each agent runs on its own isolated Fly machine with a Daytona sandbox for real work, screened by an NVIDIA Nemotron safety pass. A fleet of bounded, autonomous operators."
           />
         </div>
       </section>
@@ -436,7 +434,7 @@ export default function Landing() {
           The money loop, bounded by design
         </h2>
         <p style={{ color: "rgba(237,230,217,0.6)", margin: "0 0 36px", maxWidth: 620 }}>
-          The guarantee isn&apos;t a promise in a prompt — it&apos;s enforced in code at execution time.
+          The guarantee isn&apos;t a promise in a prompt. It&apos;s enforced in code at execution time.
         </p>
         <div
           style={{
@@ -446,10 +444,10 @@ export default function Landing() {
           }}
         >
           {[
-            ["Propose", "The agent proposes every money move — earn or spend — with amount, vendor, and purpose."],
+            ["Propose", "The agent proposes every money move (earn or spend) with amount, vendor, and purpose."],
             ["Screen", "NemoClaw (NVIDIA Nemotron) + deterministic rules classify it: safe, needs-review, or blocked."],
             ["Decide", "Small safe spends auto-clear. Bigger ones pause for a human tap. Prohibited ones are refused."],
-            ["Execute", "Stripe moves the money — then hard caps (per-action, daily, reserve) are re-checked. It can never overspend."],
+            ["Execute", "Stripe moves the money, then hard caps (per-action, daily, reserve) are re-checked. It can never overspend."],
           ].map(([t, b], i) => (
             <motion.div
               key={t}
@@ -485,7 +483,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* guarantee band — intentional full-bleed grid break */}
+      {/* guarantee band (intentional full-bleed grid break) */}
       <section
         style={{
           position: "relative",
@@ -526,7 +524,7 @@ export default function Landing() {
               maxWidth: 760,
             }}
           >
-            An autonomous agent you can actually trust with a credit card — because the human
+            An autonomous agent you can actually trust with a credit card, because the human
             holds the caps, and the caps are absolute.
           </p>
         </div>
@@ -549,7 +547,7 @@ export default function Landing() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Image src="/hermes-emblem.png" alt="HermesCo" width={26} height={26} />
+          <HermesMark size={26} idPrefix="hm-foot" />
           <span style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>
             Hermes<span style={{ color: GOLD }}>Co</span>
           </span>

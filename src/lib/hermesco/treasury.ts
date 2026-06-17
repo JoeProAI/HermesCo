@@ -1,4 +1,4 @@
-// HermesCo — the Treasury. Human-in-the-loop money control.
+// HermesCo - the Treasury. Human-in-the-loop money control.
 //
 // Flow: the agent proposes a money move → it is screened (NemoClaw) and gated by
 // hard caps → small, safe spends auto-approve; bigger ones wait for a human tap;
@@ -29,7 +29,7 @@ import {
 import { screenSpend } from "./safety";
 import { listOfferPayments, stripeMode } from "./stripe-skills";
 
-// Starts at $0 — the Treasury holds only real, deposited capital plus what the
+// Starts at $0 - the Treasury holds only real, deposited capital plus what the
 // agent actually earns. No seeded money. The human funds it via Stripe deposit.
 export const DEFAULT_BUDGET: Budget = {
   startingCapitalUsd: 0,
@@ -96,7 +96,7 @@ function newProposal(base: Omit<Proposal, "id" | "createdAt">): Proposal {
   return { ...base, id: `prop_${randomUUID().slice(0, 8)}`, createdAt: Date.now() };
 }
 
-// EARN — credit ONLY the real revenue Stripe confirms was collected on an offer's
+// EARN - credit ONLY the real revenue Stripe confirms was collected on an offer's
 // Payment Link. Idempotent on the Stripe checkout-session id, so re-running never
 // double-counts. No fabricated charge: money must really have been paid in.
 export async function collectOfferRevenue(
@@ -117,7 +117,7 @@ export async function collectOfferRevenue(
       workspaceId: id,
       type: "earn",
       amountUsd: Math.max(0, pmt.amountUsd),
-      description: pmt.customer ? `Customer payment — ${pmt.customer}` : "Customer payment",
+      description: pmt.customer ? `Customer payment from ${pmt.customer}` : "Customer payment",
       stripeRef: pmt.sessionId,
       at: Date.now(),
     };
@@ -128,7 +128,7 @@ export async function collectOfferRevenue(
   return { newRevenueUsd, creditedCount, state: await getState(id) };
 }
 
-// SPEND — screened + gated. Auto-approves only small, safe spends.
+// SPEND - screened + gated. Auto-approves only small, safe spends.
 export async function createSpend(
   id: string,
   input: { title: string; amountUsd: number; vendor: string; purpose: string },
@@ -232,14 +232,14 @@ async function executeProposal(id: string, p: Proposal): Promise<Proposal> {
 
   try {
     // A spend debits the Treasury's REAL deposited capital. The signed ledger
-    // entry is the source of truth — no fabricated Stripe charge, no test card.
+    // entry is the source of truth - no fabricated Stripe charge, no test card.
     const entry: LedgerEntry = {
       id: `led_${randomUUID().slice(0, 8)}`,
       workspaceId: id,
       proposalId: p.id,
       type: "spend",
       amountUsd: -p.amountUsd,
-      description: `${p.title} — ${p.counterparty}`,
+      description: `${p.title} (${p.counterparty})`,
       at: Date.now(),
     };
     await appendLedger(entry);
@@ -255,7 +255,7 @@ async function executeProposal(id: string, p: Proposal): Promise<Proposal> {
   }
 }
 
-// DEPOSIT — record real capital the human added via Stripe Checkout. Idempotent
+// DEPOSIT - record real capital the human added via Stripe Checkout. Idempotent
 // on the Stripe ref so a page refresh or webhook retry can't double-credit.
 export async function recordDeposit(
   id: string,

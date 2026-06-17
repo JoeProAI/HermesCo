@@ -20,11 +20,11 @@ function originOf(req: NextRequest): string {
   return req.nextUrl.origin;
 }
 
-// POST — start a real Stripe Checkout to deposit capital into the Treasury.
+// POST - start a real Stripe Checkout to deposit capital into the Treasury.
 export async function POST(req: NextRequest) {
   if (!stripeConfigured()) {
     return NextResponse.json(
-      { error: "Stripe is not connected — set STRIPE_SECRET_KEY to enable deposits." },
+      { error: "Stripe is not connected. Set STRIPE_SECRET_KEY to enable deposits." },
       { status: 400 },
     );
   }
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET — confirm a returned Checkout session and credit the Treasury (idempotent).
+// GET - confirm a returned Checkout session and credit the Treasury (idempotent).
 export async function GET(req: NextRequest) {
   const sessionId = req.nextUrl.searchParams.get("session_id")?.trim();
   const workspaceId = req.nextUrl.searchParams.get("workspaceId")?.trim() || "demo";

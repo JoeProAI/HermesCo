@@ -1,8 +1,6 @@
-// HermesCo — core domain types.
+// HermesCo - core domain types.
 // An autonomous Hermes agent that EARNS and SPENDS under a human-in-the-loop
 // Treasury with hard caps, so the business can never lose money.
-
-export type ModelKey = "hermes" | "nemotron";
 
 export type ProposalType = "earn" | "spend";
 
@@ -51,7 +49,7 @@ export interface LedgerEntry {
   at: number;
 }
 
-// The hard caps — the "can't lose money" guarantee. Enforced at execution time,
+// The hard caps - the "can't lose money" guarantee. Enforced at execution time,
 // not just at proposal time, so even a human-approved move cannot breach them.
 export interface Budget {
   startingCapitalUsd: number;
@@ -98,6 +96,5 @@ export interface AgentTurnResult {
   events: AgentEvent[];
   assistant: string; // final message to the human ("" if paused for approval)
   awaitingApproval: boolean;
-  model: ModelKey;
   state: TreasuryState;
 }

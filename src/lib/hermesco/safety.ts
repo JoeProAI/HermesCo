@@ -1,4 +1,4 @@
-// HermesCo — NemoClaw safe-runtime screen.
+// HermesCo - NemoClaw safe-runtime screen.
 //
 // Every money move is screened before it can execute. Two layers:
 //  1. Deterministic policy: prohibited-use patterns + hard numeric caps. This
@@ -23,7 +23,7 @@ export interface SafetyVerdict {
   reason: string;
 }
 
-// Deterministic numeric gate — the inviolable part of "can't lose money".
+// Deterministic numeric gate - the inviolable part of "can't lose money".
 export function capVerdict(amountUsd: number, budget: Budget): SafetyVerdict {
   if (amountUsd > budget.maxSpendPerActionUsd) {
     return {
@@ -34,7 +34,7 @@ export function capVerdict(amountUsd: number, budget: Budget): SafetyVerdict {
   if (amountUsd >= budget.autoApproveUnderUsd) {
     return {
       risk: "review",
-      reason: `$${amountUsd} is at or above the auto-approve threshold ($${budget.autoApproveUnderUsd}) — needs a human tap.`,
+      reason: `$${amountUsd} is at or above the auto-approve threshold ($${budget.autoApproveUnderUsd}). Needs a human tap.`,
     };
   }
   return { risk: "safe", reason: "Within the auto-approve band and all hard caps." };
@@ -89,7 +89,7 @@ export async function classifyWithNemotron(input: {
     if (!risk) return null;
     return { risk, reason: parsed.reason || "Flagged by NemoClaw (NVIDIA Nemotron) screen." };
   } catch {
-    return null; // model unavailable — defer to deterministic layers
+    return null; // model unavailable - defer to deterministic layers
   }
 }
 

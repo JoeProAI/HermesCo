@@ -1,9 +1,9 @@
-// HermesCo — persistence for the Treasury.
+// HermesCo - persistence for the Treasury.
 //
 // Convex-backed when NEXT_PUBLIC_CONVEX_URL is set and reachable; otherwise (or
 // on any Convex error) it transparently falls back to an in-process store so the
 // demo always runs. Convex gives durable, real-time state across serverless
-// invocations — the moment the deployment URL is set, writes persist and the
+// invocations - the moment the deployment URL is set, writes persist and the
 // command center can subscribe to live updates.
 
 import { ConvexHttpClient } from "convex/browser";

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 /**
- * The Messenger Network — HermesCo signature element.
+ * The Messenger Network - HermesCo signature element.
  *
  * A living constellation of gold→bronze "messenger" nodes drifting over ink.
  * Connections ignite along the path nearest the cursor, as if Hermes' web of
@@ -12,7 +12,7 @@ import { useEffect, useRef } from "react";
  *
  * Honors prefers-reduced-motion (renders a single static frame, no loop) and
  * lazily initializes on the client only. Draws transparent so page ink + bronze
- * glows show through. pointer-events: none — never blocks the UI beneath it.
+ * glows show through. pointer-events: none - never blocks the UI beneath it.
  */
 
 type Palette = { core: string; glow: string };

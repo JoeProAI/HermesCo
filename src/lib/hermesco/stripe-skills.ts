@@ -1,5 +1,5 @@
-// HermesCo — Stripe Skills (the agent's hands on money). Fully real: every call
-// hits the live Stripe API. There is no simulated fallback — if Stripe is not
+// HermesCo - Stripe Skills (the agent's hands on money). Fully real: every call
+// hits the live Stripe API. There is no simulated fallback - if Stripe is not
 // configured the skills throw, so the Treasury never records fabricated money.
 //
 // The agent NEVER holds a raw Stripe key. It calls these server-side skills,
@@ -21,7 +21,7 @@ function client(): Stripe | null {
 function requireClient(): Stripe {
   const stripe = client();
   if (!stripe) {
-    throw new Error("Stripe is not connected — set STRIPE_SECRET_KEY to enable real payments.");
+    throw new Error("Stripe is not connected. Set STRIPE_SECRET_KEY to enable real payments.");
   }
   return stripe;
 }
@@ -64,7 +64,7 @@ export interface OfferPayment {
 }
 
 // EARN reconcile: read the REAL payments a customer has completed on a Payment
-// Link. Only sessions Stripe marks `paid` are returned — there is no fabricated
+// Link. Only sessions Stripe marks `paid` are returned - there is no fabricated
 // charge and no test card, so revenue is recorded only when real money arrives.
 export async function listOfferPayments(paymentLinkId: string): Promise<OfferPayment[]> {
   const stripe = requireClient();
@@ -81,7 +81,7 @@ export async function listOfferPayments(paymentLinkId: string): Promise<OfferPay
     }));
 }
 
-// DEPOSIT — the human funds the Treasury with real capital via Stripe Checkout.
+// DEPOSIT - the human funds the Treasury with real capital via Stripe Checkout.
 export interface DepositCheckout {
   url: string;
   sessionId: string;

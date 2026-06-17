@@ -1,11 +1,11 @@
 "use client";
 
-// HermesCo identity — guest-first, with an optional Google sign-in.
+// HermesCo identity - guest-first, with an optional Google sign-in.
 //
 // Guests get a stable, per-browser workspace so anyone (e.g. a judge) can drive
 // the agent and Treasury immediately with zero login. Signing in with Google
 // gives a persistent, named operator whose name is stamped on every approval in
-// the ledger — the "real product" angle — without ever gating the demo.
+// the ledger - the "real product" angle - without ever gating the demo.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithPopup, signOut as fbSignOut, type User } from "firebase/auth";
