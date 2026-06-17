@@ -57,42 +57,28 @@ export async function createOffer(name: string, amountUsd: number): Promise<Offe
   return { paymentLinkUrl: link.url, ref: link.id, kind: "payment_link" };
 }
 
-export interface ChargeResult {
-  ref: string;
-  status: string;
-  kind: "payment_intent";
+export interface OfferPayment {
+  sessionId: string;
+  amountUsd: number;
+  customer: string | null;
 }
 
-// EARN execute: take a customer payment with Stripe's test card.
-export async function collectPayment(amountUsd: number, description: string): Promise<ChargeResult> {
+// EARN reconcile: read the REAL payments a customer has completed on a Payment
+// Link. Only sessions Stripe marks `paid` are returned — there is no fabricated
+// charge and no test card, so revenue is recorded only when real money arrives.
+export async function listOfferPayments(paymentLinkId: string): Promise<OfferPayment[]> {
   const stripe = requireClient();
-  const pi = await stripe.paymentIntents.create({
-    amount: Math.round(amountUsd * 100),
-    currency: "usd",
-    description,
-    payment_method: "pm_card_visa",
-    confirm: true,
-    automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+  const sessions = await stripe.checkout.sessions.list({
+    payment_link: paymentLinkId,
+    limit: 100,
   });
-  return { ref: pi.id, status: pi.status, kind: "payment_intent" };
-}
-
-// SPEND execute: pay a vendor for a tool/SaaS.
-export async function paySpend(
-  amountUsd: number,
-  vendor: string,
-  description: string,
-): Promise<ChargeResult> {
-  const stripe = requireClient();
-  const pi = await stripe.paymentIntents.create({
-    amount: Math.round(amountUsd * 100),
-    currency: "usd",
-    description: `HermesCo spend → ${vendor}: ${description}`,
-    payment_method: "pm_card_visa",
-    confirm: true,
-    automatic_payment_methods: { enabled: true, allow_redirects: "never" },
-  });
-  return { ref: pi.id, status: pi.status, kind: "payment_intent" };
+  return sessions.data
+    .filter((s) => s.payment_status === "paid")
+    .map((s) => ({
+      sessionId: s.id,
+      amountUsd: (s.amount_total ?? 0) / 100,
+      customer: s.customer_details?.email ?? null,
+    }));
 }
 
 // DEPOSIT — the human funds the Treasury with real capital via Stripe Checkout.

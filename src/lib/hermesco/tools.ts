@@ -2,7 +2,7 @@
 // so the agent can act autonomously while a human stays in control of the cash.
 
 import type { Proposal } from "./types";
-import { createEarn, createSpend, getState } from "./treasury";
+import { collectOfferRevenue, createSpend, getState } from "./treasury";
 import { createOffer } from "./stripe-skills";
 import { runInSandbox } from "./sandbox";
 
@@ -25,8 +25,9 @@ export const TOOL_SPECS: ToolSpec[] = [
   },
   {
     name: "collect_payment",
-    description: "Take a customer payment for delivered work (Stripe test mode). Records revenue.",
-    parameters: { amount_usd: "number", customer: "string", description: "string" },
+    description:
+      "Reconcile the REAL revenue a customer has actually paid on an offer's Stripe payment link. Pass the payment_link_id returned by create_offer. Credits only money Stripe confirms was collected — nothing is recorded until a real customer pays the link.",
+    parameters: { payment_link_id: "string (the id returned by create_offer)" },
   },
   {
     name: "propose_spend",
@@ -92,7 +93,9 @@ export async function executeTool(
             product: productName,
             price_usd: price,
             payment_link: offer.paymentLinkUrl,
+            payment_link_id: offer.ref,
             stripe: offer.kind,
+            next: "Share payment_link with the customer. Once they pay it, call collect_payment with this payment_link_id to credit the real revenue.",
           }),
         };
       } catch (err) {
@@ -102,26 +105,35 @@ export async function executeTool(
     }
 
     case "collect_payment": {
-      const amount = num(args.amount_usd, 0);
-      const customer = str(args.customer, "customer");
-      const description = str(args.description, "Delivered work");
-      const proposal = await createEarn(workspaceId, {
-        title: description,
-        amountUsd: amount,
-        counterparty: customer,
-        description,
-      });
-      const s = await getState(workspaceId);
-      return {
-        proposal,
-        observation: JSON.stringify({
-          ok: proposal.status === "executed",
-          recorded_revenue_usd: amount,
-          new_balance_usd: round(s.balanceUsd),
-          net_profit_usd: round(s.netProfitUsd),
-          stripe_ref: proposal.stripeRef,
-        }),
-      };
+      const paymentLinkId = str(args.payment_link_id, "");
+      if (!paymentLinkId.trim()) {
+        return {
+          observation: JSON.stringify({
+            ok: false,
+            error:
+              "Pass the payment_link_id from create_offer. Revenue is only real once a customer pays that link.",
+          }),
+        };
+      }
+      try {
+        const r = await collectOfferRevenue(workspaceId, paymentLinkId);
+        return {
+          observation: JSON.stringify({
+            ok: true,
+            new_revenue_usd: round(r.newRevenueUsd),
+            payments_credited: r.creditedCount,
+            new_balance_usd: round(r.state.balanceUsd),
+            net_profit_usd: round(r.state.netProfitUsd),
+            note:
+              r.creditedCount === 0
+                ? "No new paid payments on this link yet. Share the link with a customer; once they pay, call collect_payment again."
+                : "Real revenue credited from confirmed Stripe payments.",
+          }),
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { observation: JSON.stringify({ ok: false, error: msg }) };
+      }
     }
 
     case "propose_spend": {

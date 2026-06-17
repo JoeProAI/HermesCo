@@ -1,15 +1,9 @@
 import { Analytics } from "@vercel/analytics/react";
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Space_Grotesk, DM_Serif_Display, Instrument_Serif, Instrument_Sans } from "next/font/google";
+import { JetBrains_Mono, Space_Grotesk, DM_Serif_Display, Instrument_Serif, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers";
 import ThemeToggle from "@/components/ThemeToggle";
-
-const inter = Inter({
-  variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono",
@@ -18,7 +12,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 const spaceGrotesk = Space_Grotesk({
-  variable: "--font-heading",
+  variable: "--font-body",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
@@ -147,7 +141,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable} ${dmSerif.variable} ${instrumentSerif.variable} ${instrumentSans.variable} antialiased`}>
+      <body className={`${jetbrainsMono.variable} ${spaceGrotesk.variable} ${dmSerif.variable} ${instrumentSerif.variable} ${instrumentSans.variable} antialiased`}>
         <Providers>{children}</Providers>
         <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 60 }}>
           <ThemeToggle />

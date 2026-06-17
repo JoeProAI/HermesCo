@@ -11,6 +11,7 @@ import type {
   TreasuryState,
 } from "@/lib/hermesco/types";
 import { useIdentity, type Identity } from "@/lib/hermesco/useIdentity";
+import MessengerNetwork from "@/components/MessengerNetwork";
 
 const INK = "#0E0E10";
 const SURFACE = "#131316";
@@ -234,13 +235,15 @@ export default function CommandCenter() {
         fontFamily: "var(--font-body)",
       }}
     >
+      <MessengerNetwork dim opacity={0.3} interactive={false} maxNodes={90} />
       <div
         style={{
           position: "fixed",
           inset: 0,
           pointerEvents: "none",
+          zIndex: 0,
           background:
-            "radial-gradient(800px 500px at 85% 0%, rgba(200,137,62,0.12), transparent 60%)",
+            "radial-gradient(900px 600px at 85% -5%, rgba(200,137,62,0.13), transparent 60%), radial-gradient(1100px 800px at 50% 55%, rgba(14,14,16,0.6), transparent 75%)",
         }}
       />
       {showGate && (
@@ -250,6 +253,7 @@ export default function CommandCenter() {
       <header
         style={{
           position: "relative",
+          zIndex: 1,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -281,6 +285,7 @@ export default function CommandCenter() {
           <IdentityControl identity={identity} onSignIn={doSignIn} />
           <ModelToggle model={model} setModel={setModel} disabled={busy} />
           <button
+            className="hc-press"
             onClick={reset}
             disabled={busy}
             style={{
@@ -300,8 +305,10 @@ export default function CommandCenter() {
       </header>
 
       <div
+        className="hc-cmd-grid"
         style={{
           position: "relative",
+          zIndex: 1,
           display: "grid",
           gridTemplateColumns: "minmax(0, 1fr) minmax(340px, 460px)",
           gap: 0,
@@ -334,6 +341,7 @@ export default function CommandCenter() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {PRESETS.map((p) => (
                     <button
+                      className="hc-press"
                       key={p}
                       onClick={() => send(p)}
                       disabled={busy}
@@ -431,6 +439,7 @@ export default function CommandCenter() {
               }}
             />
             <button
+              className="hc-press"
               onClick={() => send(input)}
               disabled={busy || !input.trim()}
               style={{
@@ -452,6 +461,7 @@ export default function CommandCenter() {
 
         {/* TREASURY COLUMN */}
         <aside
+          className="hc-cmd-aside"
           style={{
             borderLeft: "1px solid rgba(237,230,217,0.08)",
             background: "rgba(0,0,0,0.25)",
@@ -498,6 +508,7 @@ function ModelToggle({
     >
       {opts.map((o) => (
         <button
+          className="hc-press"
           key={o.key}
           onClick={() => !disabled && setModel(o.key)}
           style={{
@@ -638,6 +649,7 @@ function EntryGate({
           in to keep a named operator on your approval ledger.
         </p>
         <button
+          className="hc-press"
           onClick={onGuest}
           style={{
             width: "100%",
@@ -656,6 +668,7 @@ function EntryGate({
           Continue as guest →
         </button>
         <button
+          className="hc-press"
           onClick={onGoogle}
           style={{
             width: "100%",
@@ -713,26 +726,54 @@ function EventRow({ e }: { e: AgentEvent }) {
     color: "rgba(237,230,217,0.72)",
     background: "rgba(255,255,255,0.02)",
     wordBreak: "break-word" as const,
+    display: "flex",
+    alignItems: "baseline",
+    gap: 8,
   };
   if (e.kind === "thought")
-    return <div style={{ ...base, fontStyle: "italic", color: "rgba(237,230,217,0.55)" }}>{e.text}</div>;
+    return (
+      <div style={{ ...base, fontStyle: "italic", color: "rgba(237,230,217,0.55)" }}>
+        <span className="hc-tag">THINK</span>
+        <span>{e.text}</span>
+      </div>
+    );
   if (e.kind === "tool_call")
     return (
       <div style={{ ...base, borderColor: "rgba(91,214,192,0.3)", color: TEAL }}>
-        ⚡ {e.toolName}({fmtArgs(e.toolArgs)})
+        <span className="hc-tag">CALL</span>
+        <span>
+          {e.toolName}({fmtArgs(e.toolArgs)})
+        </span>
       </div>
     );
   if (e.kind === "tool_result")
-    return <div style={{ ...base, color: "rgba(237,230,217,0.6)" }}>↳ {truncate(e.text ?? "", 220)}</div>;
+    return (
+      <div style={{ ...base, color: "rgba(237,230,217,0.6)" }}>
+        <span className="hc-tag">RESULT</span>
+        <span>{truncate(e.text ?? "", 220)}</span>
+      </div>
+    );
   if (e.kind === "proposal")
-    return <div style={{ ...base, borderColor: "rgba(200,137,62,0.32)", color: GOLD }}>◆ {e.text}</div>;
+    return (
+      <div style={{ ...base, borderColor: "rgba(200,137,62,0.32)", color: GOLD }}>
+        <span className="hc-tag">PROPOSE</span>
+        <span>{e.text}</span>
+      </div>
+    );
   if (e.kind === "awaiting_approval")
     return (
       <div style={{ ...base, borderColor: "rgba(245,158,11,0.5)", color: "#F59E0B", fontWeight: 600 }}>
-        ⏸ Awaiting your approval in the Treasury →
+        <span className="hc-tag">HOLD</span>
+        <span>Awaiting your approval in the Treasury →</span>
       </div>
     );
-  if (e.kind === "error") return <div style={{ ...base, color: DANGER }}>✕ {e.text}</div>;
+  if (e.kind === "error")
+    return (
+      <div style={{ ...base, color: DANGER }}>
+        <span className="hc-tag">ERROR</span>
+        <span>{e.text}</span>
+      </div>
+    );
   return null;
 }
 
@@ -823,7 +864,7 @@ function TreasuryPanel({
       {pending.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#F59E0B", letterSpacing: "0.1em" }}>
-            ⏸ AWAITING APPROVAL ({pending.length})
+            AWAITING APPROVAL ({pending.length})
           </div>
           {pending.map((p) => (
             <div
@@ -849,6 +890,7 @@ function TreasuryPanel({
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
+                  className="hc-press"
                   onClick={() => onDecide(p.id, "approve")}
                   disabled={deciding === p.id}
                   style={{
@@ -867,6 +909,7 @@ function TreasuryPanel({
                   Approve
                 </button>
                 <button
+                  className="hc-press"
                   onClick={() => onDecide(p.id, "deny")}
                   disabled={deciding === p.id}
                   style={{
@@ -989,6 +1032,7 @@ function DepositControl({
       <div style={{ display: "flex", gap: 8 }}>
         {presets.map((amt) => (
           <button
+            className="hc-press"
             key={amt}
             onClick={() => onDeposit(amt)}
             disabled={disabled}
@@ -1029,6 +1073,7 @@ function DepositControl({
           }}
         />
         <button
+          className="hc-press"
           onClick={() => {
             const amt = parseFloat(custom);
             if (Number.isFinite(amt) && amt >= 1) onDeposit(amt);

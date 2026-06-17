@@ -27,7 +27,7 @@ import {
   storageBackend,
 } from "./store";
 import { screenSpend } from "./safety";
-import { collectPayment, paySpend, stripeMode } from "./stripe-skills";
+import { listOfferPayments, stripeMode } from "./stripe-skills";
 
 // Starts at $0 — the Treasury holds only real, deposited capital plus what the
 // agent actually earns. No seeded money. The human funds it via Stripe deposit.
@@ -96,27 +96,36 @@ function newProposal(base: Omit<Proposal, "id" | "createdAt">): Proposal {
   return { ...base, id: `prop_${randomUUID().slice(0, 8)}`, createdAt: Date.now() };
 }
 
-// EARN — money in is always safe, so it auto-approves and executes immediately.
-export async function createEarn(
+// EARN — credit ONLY the real revenue Stripe confirms was collected on an offer's
+// Payment Link. Idempotent on the Stripe checkout-session id, so re-running never
+// double-counts. No fabricated charge: money must really have been paid in.
+export async function collectOfferRevenue(
   id: string,
-  input: { title: string; amountUsd: number; counterparty: string; description: string },
-): Promise<Proposal> {
-  const p = newProposal({
-    workspaceId: id,
-    type: "earn",
-    title: input.title,
-    description: input.description,
-    amountUsd: Math.max(0, input.amountUsd),
-    counterparty: input.counterparty,
-    status: "approved",
-    autoApproved: true,
-    risk: "safe",
-    safetyReason: "Revenue (money in) — no downside risk.",
-    decidedAt: Date.now(),
-    decidedBy: "policy",
-  });
-  await putProposal(p);
-  return executeProposal(id, p);
+  paymentLinkId: string,
+): Promise<{ newRevenueUsd: number; creditedCount: number; state: TreasuryState }> {
+  await ensureWorkspace(id);
+  const paid = await listOfferPayments(paymentLinkId);
+  const ledger = await listLedger(id);
+  const seen = new Set(ledger.map((e) => e.stripeRef).filter(Boolean));
+
+  let newRevenueUsd = 0;
+  let creditedCount = 0;
+  for (const pmt of paid) {
+    if (seen.has(pmt.sessionId)) continue;
+    const entry: LedgerEntry = {
+      id: `led_${randomUUID().slice(0, 8)}`,
+      workspaceId: id,
+      type: "earn",
+      amountUsd: Math.max(0, pmt.amountUsd),
+      description: pmt.customer ? `Customer payment — ${pmt.customer}` : "Customer payment",
+      stripeRef: pmt.sessionId,
+      at: Date.now(),
+    };
+    await appendLedger(entry);
+    newRevenueUsd += entry.amountUsd;
+    creditedCount += 1;
+  }
+  return { newRevenueUsd, creditedCount, state: await getState(id) };
 }
 
 // SPEND — screened + gated. Auto-approves only small, safe spends.
@@ -197,63 +206,45 @@ export async function decide(
   return executeProposal(id, approved);
 }
 
-// Defense-in-depth: re-check every hard cap at execution time.
+// SPEND execution. Defense-in-depth: re-check every hard cap at execution time,
+// so even a human-approved move can never breach the "can't lose money" floor.
 async function executeProposal(id: string, p: Proposal): Promise<Proposal> {
   if (p.status !== "approved") return p;
   const state = await getState(id);
   const { budget, balanceUsd, spentTodayUsd } = state;
 
-  if (p.type === "spend") {
-    const fail = (reason: string): Proposal => ({ ...p, status: "failed", error: reason });
-    if (p.amountUsd > budget.maxSpendPerActionUsd) {
-      const f = fail(`Refused: exceeds per-action hard cap ($${budget.maxSpendPerActionUsd}).`);
-      await putProposal(f);
-      return f;
-    }
-    if (spentTodayUsd + p.amountUsd > budget.dailySpendCapUsd) {
-      const f = fail(`Refused: would breach the daily spend cap ($${budget.dailySpendCapUsd}).`);
-      await putProposal(f);
-      return f;
-    }
-    if (balanceUsd - p.amountUsd < budget.minReserveUsd) {
-      const f = fail(`Refused: would drop below the minimum reserve ($${budget.minReserveUsd}).`);
-      await putProposal(f);
-      return f;
-    }
+  const fail = (reason: string): Proposal => ({ ...p, status: "failed", error: reason });
+  if (p.amountUsd > budget.maxSpendPerActionUsd) {
+    const f = fail(`Refused: exceeds per-action hard cap ($${budget.maxSpendPerActionUsd}).`);
+    await putProposal(f);
+    return f;
+  }
+  if (spentTodayUsd + p.amountUsd > budget.dailySpendCapUsd) {
+    const f = fail(`Refused: would breach the daily spend cap ($${budget.dailySpendCapUsd}).`);
+    await putProposal(f);
+    return f;
+  }
+  if (balanceUsd - p.amountUsd < budget.minReserveUsd) {
+    const f = fail(`Refused: would drop below the minimum reserve ($${budget.minReserveUsd}).`);
+    await putProposal(f);
+    return f;
   }
 
   try {
-    let stripeRef: string;
-    let stripeKind: string;
-    if (p.type === "earn") {
-      const r = await collectPayment(p.amountUsd, `${p.title} — ${p.counterparty}`);
-      stripeRef = r.ref;
-      stripeKind = r.kind;
-    } else {
-      const r = await paySpend(p.amountUsd, p.counterparty, p.description);
-      stripeRef = r.ref;
-      stripeKind = r.kind;
-    }
-
+    // A spend debits the Treasury's REAL deposited capital. The signed ledger
+    // entry is the source of truth — no fabricated Stripe charge, no test card.
     const entry: LedgerEntry = {
       id: `led_${randomUUID().slice(0, 8)}`,
       workspaceId: id,
       proposalId: p.id,
-      type: p.type,
-      amountUsd: p.type === "earn" ? p.amountUsd : -p.amountUsd,
+      type: "spend",
+      amountUsd: -p.amountUsd,
       description: `${p.title} — ${p.counterparty}`,
-      stripeRef,
       at: Date.now(),
     };
     await appendLedger(entry);
 
-    const executed: Proposal = {
-      ...p,
-      status: "executed",
-      executedAt: Date.now(),
-      stripeRef,
-      stripeKind,
-    };
+    const executed: Proposal = { ...p, status: "executed", executedAt: Date.now() };
     await putProposal(executed);
     return executed;
   } catch (err) {

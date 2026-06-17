@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { motion } from "framer-motion";
+import MessengerNetwork from "@/components/MessengerNetwork";
 
 const INK = "#0E0E10";
 const GOLD = "#E0A35A";
@@ -31,7 +32,8 @@ function Pill({ children }: { children: React.ReactNode }) {
         border: "1px solid rgba(237,230,217,0.14)",
         borderRadius: 999,
         padding: "6px 14px",
-        background: "rgba(237,230,217,0.03)",
+        background: "rgba(14,14,16,0.55)",
+        backdropFilter: "blur(6px)",
         whiteSpace: "nowrap",
       }}
     >
@@ -41,23 +43,32 @@ function Pill({ children }: { children: React.ReactNode }) {
 }
 
 function Pillar({
+  index,
   tag,
   title,
   body,
   accent,
 }: {
+  index: number;
   tag: string;
   title: string;
   body: string;
   accent: string;
 }) {
   return (
-    <div
+    <motion.div
+      custom={index}
+      variants={fadeUp}
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, margin: "-60px" }}
       style={{
         border: "1px solid rgba(237,230,217,0.10)",
         borderRadius: 14,
         padding: "28px 26px",
-        background: "linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0))",
+        background:
+          "linear-gradient(180deg, rgba(20,20,23,0.72), rgba(14,14,16,0.55))",
+        backdropFilter: "blur(8px)",
         position: "relative",
         overflow: "hidden",
       }}
@@ -85,7 +96,7 @@ function Pillar({
       </div>
       <h3
         style={{
-          fontFamily: "var(--font-editorial-serif)",
+          fontFamily: "var(--font-display)",
           fontSize: 26,
           color: CREAM,
           margin: "0 0 10px",
@@ -97,7 +108,7 @@ function Pillar({
       <p style={{ color: "rgba(237,230,217,0.62)", fontSize: 15, lineHeight: 1.6, margin: 0 }}>
         {body}
       </p>
-    </div>
+    </motion.div>
   );
 }
 
@@ -105,6 +116,7 @@ export default function Landing() {
   return (
     <main
       style={{
+        position: "relative",
         minHeight: "100vh",
         background: INK,
         color: CREAM,
@@ -112,15 +124,33 @@ export default function Landing() {
         overflowX: "hidden",
       }}
     >
-      {/* ambient glow */}
+      {/* Signature element: the Messenger Network (Hermes-bronze interactive constellation) */}
+      <MessengerNetwork opacity={0.9} />
+
+      {/* Warmth + legibility scrim over the network */}
       <div
         style={{
           position: "fixed",
           inset: 0,
           pointerEvents: "none",
-          background:
-            "radial-gradient(900px 600px at 78% 12%, rgba(200,137,62,0.16), transparent 60%), radial-gradient(700px 500px at 10% 90%, rgba(91,214,192,0.06), transparent 60%)",
           zIndex: 0,
+          background:
+            "radial-gradient(1100px 720px at 76% 8%, rgba(200,137,62,0.16), transparent 60%), radial-gradient(820px 560px at 8% 92%, rgba(91,214,192,0.05), transparent 60%), radial-gradient(1200px 900px at 50% 42%, rgba(14,14,16,0.55), rgba(14,14,16,0.18) 55%, transparent 80%)",
+        }}
+      />
+
+      {/* Film grain */}
+      <div
+        aria-hidden
+        style={{
+          position: "fixed",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 0,
+          opacity: 0.05,
+          mixBlendMode: "overlay",
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
         }}
       />
 
@@ -141,9 +171,9 @@ export default function Landing() {
           <Image src="/hermes-emblem.png" alt="HermesCo" width={40} height={40} priority />
           <span
             style={{
-              fontFamily: "var(--font-editorial-serif)",
+              fontFamily: "var(--font-display)",
               fontSize: 22,
-              letterSpacing: "0.02em",
+              letterSpacing: "0.01em",
             }}
           >
             Hermes<span style={{ color: GOLD }}>Co</span>
@@ -179,6 +209,7 @@ export default function Landing() {
           gap: 48,
           alignItems: "center",
         }}
+        className="hc-hero"
       >
         <div>
           <motion.div
@@ -199,9 +230,9 @@ export default function Landing() {
             initial="hidden"
             animate="show"
             style={{
-              fontFamily: "var(--font-editorial-serif)",
+              fontFamily: "var(--font-display)",
               fontWeight: 400,
-              fontSize: "clamp(40px, 6vw, 72px)",
+              fontSize: "clamp(40px, 6vw, 74px)",
               lineHeight: 1.04,
               margin: "0 0 22px",
               letterSpacing: "-0.01em",
@@ -228,9 +259,9 @@ export default function Landing() {
             style={{
               fontSize: 18,
               lineHeight: 1.65,
-              color: "rgba(237,230,217,0.70)",
+              color: "rgba(237,230,217,0.74)",
               maxWidth: 560,
-              margin: "0 0 34px",
+              margin: "0 0 30px",
             }}
           >
             HermesCo is a one-agent company. Hermes earns revenue, spends on the tools it
@@ -239,8 +270,38 @@ export default function Landing() {
             physically cannot breach.
           </motion.p>
 
+          {/* live-status ribbon — terminal voice, no fabricated figures */}
           <motion.div
             custom={3}
+            variants={fadeUp}
+            initial="hidden"
+            animate="show"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 12.5,
+              letterSpacing: "0.04em",
+              color: "rgba(237,230,217,0.6)",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              marginBottom: 30,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 999,
+                background: TEAL,
+                boxShadow: `0 0 10px ${TEAL}`,
+                display: "inline-block",
+              }}
+            />
+            TREASURY ARMED · PER-ACTION $50 · DAILY $100 · RESERVE $20 — enforced in code
+          </motion.div>
+
+          <motion.div
+            custom={4}
             variants={fadeUp}
             initial="hidden"
             animate="show"
@@ -272,6 +333,7 @@ export default function Landing() {
                 padding: "14px 26px",
                 borderRadius: 10,
                 textDecoration: "none",
+                background: "rgba(14,14,16,0.4)",
               }}
             >
               How it works
@@ -284,6 +346,7 @@ export default function Landing() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
           style={{ position: "relative", display: "flex", justifyContent: "center" }}
+          className="hc-hero-emblem"
         >
           <motion.div
             animate={{ y: [0, -12, 0] }}
@@ -293,9 +356,9 @@ export default function Landing() {
             <div
               style={{
                 position: "absolute",
-                inset: "-12%",
-                background: "radial-gradient(circle, rgba(200,137,62,0.30), transparent 65%)",
-                filter: "blur(20px)",
+                inset: "-14%",
+                background: "radial-gradient(circle, rgba(200,137,62,0.34), transparent 65%)",
+                filter: "blur(22px)",
               }}
             />
             <Image
@@ -329,20 +392,23 @@ export default function Landing() {
           }}
         >
           <Pillar
+            index={0}
             tag="01 · EARN"
             accent={GOLD}
             title="It makes money"
             body="Hermes stands up a real offer — a Stripe product, price, and payment link — and collects customer payments for delivered work. Revenue lands on a live ledger."
           />
           <Pillar
+            index={1}
             tag="02 · SPEND"
             accent={TEAL}
             title="Under your control"
             body="To buy the SaaS and APIs it needs, the agent files a proposal. Small, safe spends auto-approve; anything bigger waits for one human tap. Over-cap or prohibited moves are refused outright."
           />
           <Pillar
+            index={2}
             tag="03 · SCALE · SAFE"
-            accent="#9A8CFF"
+            accent="#8FB7F0"
             title="At any scale"
             body="Each agent runs on its own isolated Fly machine with a Daytona sandbox for real work, screened by an NVIDIA Nemotron safety pass — a fleet of bounded, autonomous operators."
           />
@@ -361,7 +427,7 @@ export default function Landing() {
       >
         <h2
           style={{
-            fontFamily: "var(--font-editorial-serif)",
+            fontFamily: "var(--font-display)",
             fontSize: "clamp(28px, 4vw, 44px)",
             fontWeight: 400,
             margin: "0 0 8px",
@@ -385,13 +451,19 @@ export default function Landing() {
             ["Decide", "Small safe spends auto-clear. Bigger ones pause for a human tap. Prohibited ones are refused."],
             ["Execute", "Stripe moves the money — then hard caps (per-action, daily, reserve) are re-checked. It can never overspend."],
           ].map(([t, b], i) => (
-            <div
+            <motion.div
               key={t}
+              custom={i}
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: "-60px" }}
               style={{
                 border: "1px solid rgba(237,230,217,0.10)",
                 borderRadius: 12,
                 padding: "22px 20px",
-                background: "rgba(255,255,255,0.02)",
+                background: "rgba(20,20,23,0.6)",
+                backdropFilter: "blur(8px)",
               }}
             >
               <div
@@ -408,12 +480,12 @@ export default function Landing() {
               <p style={{ color: "rgba(237,230,217,0.6)", fontSize: 14, lineHeight: 1.55, margin: 0 }}>
                 {b}
               </p>
-            </div>
+            </motion.div>
           ))}
         </div>
       </section>
 
-      {/* guarantee band */}
+      {/* guarantee band — intentional full-bleed grid break */}
       <section
         style={{
           position: "relative",
@@ -430,7 +502,8 @@ export default function Landing() {
             padding: "36px 32px",
             textAlign: "center",
             background:
-              "linear-gradient(180deg, rgba(200,137,62,0.08), rgba(200,137,62,0.02))",
+              "linear-gradient(180deg, rgba(200,137,62,0.10), rgba(200,137,62,0.02))",
+            backdropFilter: "blur(8px)",
           }}
         >
           <div
@@ -446,7 +519,7 @@ export default function Landing() {
           </div>
           <p
             style={{
-              fontFamily: "var(--font-editorial-serif)",
+              fontFamily: "var(--font-display)",
               fontSize: "clamp(22px, 3vw, 34px)",
               lineHeight: 1.3,
               margin: "0 auto",
@@ -477,7 +550,7 @@ export default function Landing() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Image src="/hermes-emblem.png" alt="HermesCo" width={26} height={26} />
-          <span style={{ fontFamily: "var(--font-editorial-serif)", fontSize: 16 }}>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>
             Hermes<span style={{ color: GOLD }}>Co</span>
           </span>
         </div>
