@@ -14,9 +14,34 @@ interface DepositBody {
   amountUsd?: number;
 }
 
+function firstHeaderValue(value: string | null): string | null {
+  if (!value) return null;
+  const first = value.split(",")[0]?.trim();
+  return first || null;
+}
+
+// Resolve the public origin. Behind the Fly proxy the server binds to
+// 0.0.0.0:3000, so req.nextUrl.origin is the internal address. Trust the
+// forwarded host/proto headers the proxy sets so the Checkout return URL
+// points at the real domain (hermesco.fly.dev today, hermesco.ai later).
 function originOf(req: NextRequest): string {
   const env = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
   if (env) return env;
+
+  const host =
+    firstHeaderValue(req.headers.get("x-forwarded-host")) ||
+    firstHeaderValue(req.headers.get("host"));
+  if (host) {
+    const isLocal =
+      host.startsWith("0.0.0.0") ||
+      host.startsWith("127.0.0.1") ||
+      host.startsWith("localhost");
+    const proto =
+      firstHeaderValue(req.headers.get("x-forwarded-proto")) ||
+      (isLocal ? "http" : "https");
+    return `${proto}://${host}`;
+  }
+
   return req.nextUrl.origin;
 }
 
