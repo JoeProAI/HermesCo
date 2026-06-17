@@ -1,0 +1,68 @@
+---
+title: "Safety screen"
+description: "NemoClaw: a deterministic policy gate layered with NVIDIA Nemotron classification, so the safety outcome never depends on a model being available."
+---
+
+## NemoClaw
+
+NemoClaw is the safe-runtime screen that runs on every spend. It combines a deterministic policy layer (the inviolable part) with an NVIDIA Nemotron classification (the judgement part). The deterministic layer is decisive on its own, so a spend can never slip through just because a model was slow or unavailable. The implementation is `src/lib/hermesco/safety.ts`.
+
+## Order of evaluation
+
+```
+screenSpend(amount, text, budget)
+   1. prohibitedVerdict(text)     -> blocked if it matches a prohibited-use pattern
+   2. capVerdict(amount, budget)  -> blocked if amount > per-action cap
+   3. classifyWithNemotron(...)   -> Nemotron risk classification
+   4. capVerdict(amount, budget)  -> caps re-checked as the final word
+```
+
+The hard cap is checked before and after the model. The model can tighten the outcome but it can never loosen a cap.
+
+## The deterministic gate
+
+```ts
+export function capVerdict(amountUsd: number, budget: Budget): SafetyVerdict {
+  if (amountUsd > budget.maxSpendPerActionUsd) {
+    return {
+      risk: "blocked",
+      reason: `Exceeds the per-action hard cap ($${budget.maxSpendPerActionUsd}). NemoClaw refuses.`,
+    };
+  }
+  if (amountUsd >= budget.autoApproveUnderUsd) {
+    return {
+      risk: "review",
+      reason: `$${amountUsd} is at or above the auto-approve threshold ($${budget.autoApproveUnderUsd}). Needs a human tap.`,
+    };
+  }
+  return { risk: "safe", reason: "Within the auto-approve band and all hard caps." };
+}
+```
+
+A verdict has three levels:
+
+| Risk | Meaning | Outcome |
+| --- | --- | --- |
+| `blocked` | Over a hard cap or prohibited | Refused in code, no money moves |
+| `review` | Allowed but not trivial | Held for a human decision |
+| `safe` | Small and within all caps | Auto-approved, then caps re-checked at execution |
+
+## Nemotron classification
+
+When the deterministic layer does not already block, Nemotron classifies the spend through the OpenRouter chat client:
+
+```ts
+classifyWithNemotron({ ... })  ->  chatComplete(SAFETY_MODEL_ID, ...)
+```
+
+If the model is unavailable, the function returns null and the deterministic layers stand. The safety outcome is therefore never blocked on model availability.
+
+## What the agent sees
+
+The agent is told the verdict in plain terms so it behaves correctly without retry loops:
+
+- Awaiting approval: it pauses and explains what it needs and why.
+- Refused by the Treasury: it does not retry the spend.
+- Failed a hard cap: it does not retry.
+
+This keeps the agent honest about money it does not have and spends it cannot make.

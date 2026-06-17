@@ -1,0 +1,75 @@
+---
+title: "One machine: status, actions, destroy"
+description: "GET, POST, and DELETE /api/hermesco/agents/[id]"
+---
+
+## Status
+
+```http
+GET /api/hermesco/agents/[id]
+```
+
+Returns the live status and vitals of one agent machine.
+
+<ResponseField name="machine" type="AgentMachine">
+  The machine, or a `404` if it does not exist.
+</ResponseField>
+
+```bash
+curl -s https://hermesco.fly.dev/api/hermesco/agents/MACHINE_ID | jq
+```
+
+## Act on the machine
+
+```http
+POST /api/hermesco/agents/[id]
+```
+
+Suspend, start, or exec a real command on the agent's body.
+
+<ParamField body="action" type="string" required>
+  One of `suspend`, `start`, or `exec`.
+</ParamField>
+
+<ParamField body="command" type="string">
+  Required when `action` is `exec`. A bash command to run on the machine.
+</ParamField>
+
+<ParamField body="timeoutSec" type="number">
+  Optional timeout for an `exec`.
+</ParamField>
+
+For `suspend` and `start`, the response is `{ ok: true, machine }` with the refreshed machine. Suspend drops the machine to $0 compute; start resumes it warm.
+
+For `exec`, the response is `{ ok, result }` where `result` is `{ exitCode, stdout, stderr, durationMs }` and `ok` is true when `exitCode` is `0`.
+
+```bash
+# Suspend to $0
+curl -s https://hermesco.fly.dev/api/hermesco/agents/MACHINE_ID \
+  -H "content-type: application/json" -d '{"action":"suspend"}' | jq
+
+# Run a real command on the body
+curl -s https://hermesco.fly.dev/api/hermesco/agents/MACHINE_ID \
+  -H "content-type: application/json" \
+  -d '{"action":"exec","command":"python3 -c \"print(2+2)\""}' | jq
+```
+
+## Destroy
+
+```http
+DELETE /api/hermesco/agents/[id]
+```
+
+Destroys the agent machine. Returns `{ ok: true }`.
+
+```bash
+curl -s -X DELETE https://hermesco.fly.dev/api/hermesco/agents/MACHINE_ID | jq
+```
+
+## Errors
+
+| Status | Condition |
+| --- | --- |
+| `400` | Fly is not connected, an unknown action, or `exec` without a `command`. |
+| `404` | The machine does not exist (status only). |
+| `500` | The Fly API returned an error. |

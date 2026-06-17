@@ -1,0 +1,58 @@
+---
+title: "The pipeline"
+description: "Hermes decides, NVIDIA Nemotron screens, Stripe settles. One agent, one loop, three systems."
+---
+
+## One agent, not a toggle
+
+HermesCo runs a single operator. There is no model picker and no "Hermes or Nemotron" switch. Hermes is the brain; Nemotron is a safety screen that is always on underneath it.
+
+```
+Hermes (Nous Research)  ->  NVIDIA Nemotron (NemoClaw)  ->  Stripe
+   decides and drives          screens every spend           settles money
+```
+
+## Hermes decides
+
+Hermes 4 405B is the operator. It receives a system prompt, the available tool specs, and the conversation history, then reasons and emits tool calls in Hermes's native format:
+
+```xml
+<tool_call>
+{"name": "propose_spend", "arguments": {"amount_usd": 120, "vendor": "CoreWeave", "purpose": "GPU server"}}
+</tool_call>
+```
+
+The server parses each `<tool_call>`, executes the tool, and appends the result as a `<tool_response>` for the next step. The loop is bounded so a turn always terminates. Hermes stops calling tools when the task is done or when a spend is awaiting a human decision.
+
+The model is defined in `src/lib/hermesco/models.ts`:
+
+```ts
+export const HERMES_MODEL = {
+  id: "nousresearch/hermes-4-405b",
+  label: "Hermes 4 405B",
+  vendor: "Nous Research",
+};
+```
+
+## Nemotron screens
+
+Every proposed spend is classified by NVIDIA Nemotron before it can move money. This is the NemoClaw layer. It is not a different agent you choose; it is a second set of eyes that runs on every spend.
+
+```ts
+export const NEMO_MODEL = {
+  id: "nvidia/nemotron-3-ultra-550b-a55b",
+  label: "Nemotron 3 Ultra",
+  vendor: "NVIDIA",
+};
+export const SAFETY_MODEL_ID = NEMO_MODEL.id;
+```
+
+Nemotron's judgement is layered with deterministic checks so the safety outcome never depends on a model being available. See [Safety screen](/concepts/safety) for the exact order of evaluation.
+
+## Stripe settles
+
+When money actually moves, it moves through Stripe: real Checkout sessions for deposits, real payment links for earning, and a real ledger entry for every spend. There is no simulated fallback and no canned test card. If Stripe is not connected, the money tools say so rather than faking a result. See [Treasury](/concepts/treasury).
+
+## Why this unifies the three sponsors
+
+The hackathon brings together Nous Research (Hermes), NVIDIA (Nemotron, NemoClaw, agent skills), and Stripe (payment skills). Rather than hiding them behind a dropdown, HermesCo composes them into a single operating loop: the Nous brain decides, the NVIDIA screen verifies, and the Stripe rail settles, all on real infrastructure.

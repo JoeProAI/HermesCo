@@ -1,0 +1,32 @@
+---
+title: "Reset a workspace"
+description: "POST /api/hermesco/treasury/reset"
+---
+
+```http
+POST /api/hermesco/treasury/reset
+```
+
+Resets a workspace's Treasury back to its starting state: balance $0, no proposals, an empty ledger, and the default caps. This clears the workspace, not a demo seed; there is no fabricated state to restore.
+
+## Request body
+
+<ParamField body="workspaceId" type="string" default="demo">
+  The workspace to reset.
+</ParamField>
+
+## Response
+
+Returns the fresh `TreasuryState`.
+
+```bash
+curl -s https://hermesco.fly.dev/api/hermesco/treasury/reset \
+  -H "content-type: application/json" \
+  -d '{"workspaceId":"g_demo"}' | jq
+```
+
+## Errors
+
+| Status | Condition |
+| --- | --- |
+| `500` | An unexpected error during reset (returned in `error`). |

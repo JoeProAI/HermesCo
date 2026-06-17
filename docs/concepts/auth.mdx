@@ -1,0 +1,35 @@
+---
+title: "Identity and access"
+description: "Guest-first by default, with an optional Google sign-in for a named operator on the approval ledger."
+---
+
+## Guest-first
+
+HermesCo is built to be judged and used with zero friction. Anyone landing on the Command Center can continue as a guest and drive the agent immediately, with no login and no card. Each guest gets an isolated workspace and its own Treasury. The implementation is `src/lib/hermesco/useIdentity.ts`.
+
+```ts
+interface Identity {
+  ready: boolean;
+  kind: "guest" | "user";
+  workspaceId: string;   // g_<guestId> for guests, u_<uid> for signed-in users
+  name: string;
+  email: string | null;
+  photoURL: string | null;
+  signInGoogle(): Promise<{ ok: boolean; error?: string }>;
+  signOut(): Promise<void>;
+}
+```
+
+A guest id is generated and stored locally, producing a stable `g_<guestId>` workspace so a guest's Treasury survives a page reload.
+
+## Optional Google sign-in
+
+Signing in with Google gives a persistent, named operator identity. The operator's name is stamped on every approval decision in the ledger, which is the "real product" angle: a human who is accountable for the money decisions. Sign-in is optional and never gates the experience; guest mode works even if Google sign-in is not enabled in the Firebase project.
+
+## Why it matters for the money story
+
+Every spend that needs a human decision is approved or denied by an operator. With Google sign-in, that operator has a real name on the record. With guest mode, the workspace is still isolated and the caps still hold. Either way, the human-in-the-loop control is intact.
+
+<Note>
+  The decision endpoint accepts an `operator` field that is recorded on the proposal. See [Decide API](/api-reference/treasury-decide).
+</Note>

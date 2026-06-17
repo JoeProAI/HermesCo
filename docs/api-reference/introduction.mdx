@@ -1,0 +1,35 @@
+---
+title: "API overview"
+description: "Every HermesCo endpoint under /api/hermesco, with conventions for workspaces, errors, and runtime."
+---
+
+## Base
+
+All endpoints live under `/api/hermesco`. On the live deployment the base is `https://hermesco.fly.dev/api/hermesco`. Every route runs on the Node.js runtime and is dynamic (never cached).
+
+## Workspaces
+
+Most endpoints accept a `workspaceId`. This isolates one operator's Treasury, proposals, ledger, and agent body from another's. Guests use `g_<guestId>`, signed-in users use `u_<uid>`, and ad hoc callers can pass any string. If omitted, the server uses `demo`.
+
+## Conventions
+
+- Requests and responses are JSON.
+- Errors return `{ "error": "message" }` with an appropriate status code (`400` for bad input, `403` for a workspace mismatch, `404` for not found, `500` for a server error).
+- Money endpoints fail honestly when Stripe is not connected rather than fabricating a result.
+- Agent machine endpoints return `400` with a clear message when `FLY_API_TOKEN` is not set.
+
+## Endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/hermesco/agent` | Run one agent turn (Hermes drives tools). |
+| GET | `/api/hermesco/agents` | List the agent fleet and whether Fly is configured. |
+| POST | `/api/hermesco/agents` | Provision a new agent machine. |
+| GET | `/api/hermesco/agents/[id]` | Status and vitals of one machine. |
+| POST | `/api/hermesco/agents/[id]` | Suspend, start, or exec on a machine. |
+| DELETE | `/api/hermesco/agents/[id]` | Destroy a machine. |
+| GET | `/api/hermesco/treasury` | Read the live Treasury state. |
+| POST | `/api/hermesco/treasury/decide` | Approve or deny a pending proposal. |
+| POST | `/api/hermesco/treasury/deposit` | Start a Stripe Checkout to deposit capital. |
+| GET | `/api/hermesco/treasury/deposit` | Confirm a returned Checkout session and credit it. |
+| POST | `/api/hermesco/treasury/reset` | Reset a workspace's Treasury. |

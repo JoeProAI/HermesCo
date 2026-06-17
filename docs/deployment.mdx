@@ -1,0 +1,57 @@
+---
+title: "Deployment"
+description: "How HermesCo runs in production on Fly, and the secrets that turn on each capability."
+---
+
+## Production topology
+
+HermesCo runs as two Fly apps:
+
+| App | Role |
+| --- | --- |
+| `hermesco` | The Next.js web app: Command Center, agent loop, Treasury, APIs |
+| `hermesco-agents` | The dedicated app that holds per-agent Fly Machines (agent bodies) |
+
+The web app is live at `https://hermesco.fly.dev`. Agent bodies are provisioned into `hermesco-agents` on demand and do not need public IPs because all execution happens through the Machines API.
+
+## Deploy
+
+```bash
+export FLY_API_TOKEN=...
+flyctl deploy --app hermesco --remote-only
+```
+
+The app builds with a standard Dockerfile (Node 22, `npm ci`, `next build`). A single machine is sufficient; the in-memory Treasury persists across requests on one instance, and Convex upgrades that to durable, multi-instance persistence.
+
+## Secrets
+
+Set secrets on the web app with `flyctl secrets set KEY=VALUE --app hermesco`. Each one turns on a capability; the app degrades honestly without it.
+
+| Secret | Enables | Without it |
+| --- | --- | --- |
+| `OPENROUTER_API_KEY` | Hermes and Nemotron inference | The agent cannot run |
+| `FLY_API_TOKEN` | Per-agent Fly machines | `run_in_sandbox` falls back to Daytona |
+| `STRIPE_SECRET_KEY` | Deposits, earning, real money loop | Money tools fail honestly (`stripeMode: none`) |
+| `DAYTONA_API_KEY` | Daytona sandbox fallback | No Daytona fallback |
+| `NEXT_PUBLIC_CONVEX_URL` | Durable, multi-instance persistence | In-memory store per instance |
+
+## Stripe: test or live
+
+The same code path runs in either mode; the mode is detected from the key prefix:
+
+```
+sk_test_ / rk_test_  -> "test"   (real Stripe, test cards, no real dollars)
+sk_live_ / rk_live_  -> "live"   (real money moves)
+neither set           -> "none"   (money tools disabled, fail honestly)
+```
+
+Test mode is recommended for evaluation because anyone can run the full money loop with Stripe test cards and zero setup. Going live is a single key swap; the Stripe account simply needs to be activated.
+
+## Verifying a deployment
+
+```bash
+curl -s https://hermesco.fly.dev/api/hermesco/agents | jq        # fleet + configured flag
+curl -s "https://hermesco.fly.dev/api/hermesco/treasury?workspaceId=probe" | jq
+```
+
+A healthy deployment returns `configured: true` from the agents endpoint when `FLY_API_TOKEN` is set, and a Treasury state with `stripeMode` reflecting the key in use.

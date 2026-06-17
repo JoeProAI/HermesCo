@@ -1,0 +1,37 @@
+---
+title: "Persistence"
+description: "Convex when configured, an in-memory store otherwise. The Treasury survives across requests either way."
+---
+
+## Two modes
+
+The Treasury store (`src/lib/hermesco/store.ts`) has two backends and picks one at runtime:
+
+| Condition | Backend | Behaviour |
+| --- | --- | --- |
+| `NEXT_PUBLIC_CONVEX_URL` is set | Convex | Durable, real-time, survives restarts and scales across instances |
+| Otherwise | In-memory | Survives across requests within a single server instance |
+
+Both modes hold real data. The in-memory fallback is not fake data; it is the same Treasury logic backed by process memory instead of a database. The moment a Convex URL is set, writes persist to Convex.
+
+## Why Convex
+
+On a serverless platform, an in-memory store can reset between requests, which would let a balance appear to jump back to its starting value. Convex gives durable persistence and real-time push, so the Command Center's Treasury and ledger update live as the agent earns and spends. The schema and functions live in the `convex/` directory.
+
+```
+convex/
+  schema.ts      treasuryBudgets, treasuryProposals, treasuryLedger
+  treasury.ts    queries and mutations for state, proposals, ledger
+  chat.ts        conversation persistence
+  invites.ts     workspace invites
+```
+
+The store calls Convex functions through `anyApi` from `convex/server`, so the app compiles and runs whether or not a Convex deployment is connected.
+
+## Single-instance deployments
+
+The live deployment runs as a single Fly machine, so even without Convex the in-memory Treasury persists across requests for the life of that instance. Setting a Convex URL upgrades this to durable, multi-instance persistence. See [Deployment](/deployment).
+
+<Note>
+  Deposit crediting is idempotent on the Stripe session id. When Convex is connected, the idempotency check and the credit are performed in a single mutation so two near-simultaneous returns cannot double-count a deposit.
+</Note>

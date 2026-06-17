@@ -1,0 +1,55 @@
+---
+title: "Read the Treasury"
+description: "GET /api/hermesco/treasury"
+---
+
+```http
+GET /api/hermesco/treasury
+```
+
+Returns the live Treasury state for a workspace. Everything is derived from the ledger; nothing is set by hand.
+
+## Query parameters
+
+<ParamField query="workspaceId" type="string" default="demo">
+  The workspace to read.
+</ParamField>
+
+## Response
+
+Returns a `TreasuryState`.
+
+<ResponseField name="balanceUsd" type="number">
+  `startingCapital + deposits + revenue - expense`.
+</ResponseField>
+<ResponseField name="depositsUsd" type="number">Real capital added through Stripe Checkout.</ResponseField>
+<ResponseField name="revenueUsd" type="number">Revenue Stripe confirms was actually collected.</ResponseField>
+<ResponseField name="expenseUsd" type="number">Total of executed spends.</ResponseField>
+<ResponseField name="netProfitUsd" type="number">`revenue - expense`.</ResponseField>
+<ResponseField name="spentTodayUsd" type="number">Spend so far today, against the daily cap.</ResponseField>
+<ResponseField name="pendingCount" type="number">Proposals awaiting a human decision.</ResponseField>
+<ResponseField name="budget" type="Budget">The hard caps in force.</ResponseField>
+<ResponseField name="proposals" type="Proposal[]">All proposals for the workspace.</ResponseField>
+<ResponseField name="ledger" type="LedgerEntry[]">The signed ledger.</ResponseField>
+<ResponseField name="stripeMode" type="string">One of `test`, `live`, or `none`.</ResponseField>
+
+```bash
+curl -s "https://hermesco.fly.dev/api/hermesco/treasury?workspaceId=g_demo" | jq
+```
+
+```json
+{
+  "workspaceId": "g_demo",
+  "budget": { "startingCapitalUsd": 0, "maxSpendPerActionUsd": 50, "autoApproveUnderUsd": 10, "dailySpendCapUsd": 100, "minReserveUsd": 20 },
+  "balanceUsd": 0,
+  "depositsUsd": 0,
+  "revenueUsd": 0,
+  "expenseUsd": 0,
+  "netProfitUsd": 0,
+  "spentTodayUsd": 0,
+  "pendingCount": 0,
+  "proposals": [],
+  "ledger": [],
+  "stripeMode": "none"
+}
+```

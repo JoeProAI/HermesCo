@@ -1,0 +1,55 @@
+---
+title: "Approve or deny a proposal"
+description: "POST /api/hermesco/treasury/decide"
+---
+
+```http
+POST /api/hermesco/treasury/decide
+```
+
+The human-in-the-loop decision. Approves or denies a pending spend proposal. An approved spend then executes, re-checking the hard caps and the minimum reserve before any money moves.
+
+## Request body
+
+<ParamField body="proposalId" type="string" required>
+  The proposal to decide.
+</ParamField>
+
+<ParamField body="decision" type="string" required>
+  Either `approve` or `deny`.
+</ParamField>
+
+<ParamField body="workspaceId" type="string" default="demo">
+  The workspace the proposal belongs to.
+</ParamField>
+
+<ParamField body="operator" type="string">
+  The name of the human making the decision. Stamped on the proposal record.
+</ParamField>
+
+## Response
+
+<ResponseField name="proposal" type="Proposal">
+  The updated proposal, including its new status (`approved`, `denied`, `executed`, or `failed`), the deciding operator, and timestamps.
+</ResponseField>
+
+<ResponseField name="state" type="TreasuryState">
+  The live Treasury state after the decision.
+</ResponseField>
+
+```bash
+curl -s https://hermesco.fly.dev/api/hermesco/treasury/decide \
+  -H "content-type: application/json" \
+  -d '{"workspaceId":"g_demo","proposalId":"PROPOSAL_ID","decision":"approve","operator":"Joseph"}' | jq
+```
+
+## Errors
+
+| Status | Condition |
+| --- | --- |
+| `400` | `proposalId` missing, `decision` not `approve`/`deny`, or invalid JSON. |
+| `500` | The proposal cannot be found or execution failed (returned in `error`). |
+
+<Note>
+  Approving a spend never bypasses the caps. If an approved spend would exceed the per-action cap, the daily cap, or draw the balance below the minimum reserve, it fails at execution and is recorded as `failed`.
+</Note>

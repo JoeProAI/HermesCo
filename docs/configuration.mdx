@@ -1,0 +1,67 @@
+---
+title: "Configuration"
+description: "Every environment variable HermesCo reads, what it controls, and its default."
+---
+
+## Inference
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OPENROUTER_API_KEY` | none | Required. The key used for both Hermes 4 405B and Nemotron through OpenRouter. |
+
+## Stripe
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `STRIPE_SECRET_KEY` | none | Enables deposits, earning, and the real money loop. Mode is inferred from the prefix (`sk_test_`, `sk_live_`). |
+| `NEXT_PUBLIC_APP_URL` | request origin | Base URL used to build Stripe Checkout success and cancel URLs. |
+
+## Fly agent machines
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `FLY_API_TOKEN` | none | Enables per-agent Fly Machines. Without it, the sandbox falls back to Daytona. |
+| `HERMESCO_AGENTS_APP` | `hermesco-agents` | The Fly app that holds agent bodies. |
+| `FLY_REGION` | `iad` | Region for new agent machines. |
+| `FLY_ORG_SLUG` | `personal` | Fly organization slug. |
+| `HERMESCO_AGENT_IMAGE` | `nikolaik/python-nodejs:python3.12-nodejs22` | The agent body image (Python 3.12, Node 22, git, bash). |
+| `HERMESCO_AGENT_CPU_KIND` | `performance` | Dedicated vCPUs by default, not the shared-cpu minimum. |
+| `HERMESCO_AGENT_CPUS` | `2` | vCPU count (minimum 1). |
+| `HERMESCO_AGENT_MEMORY_MB` | `4096` | Memory in MB (minimum 512). |
+| `HERMESCO_COMPUTE_USD_PER_MIN` | `0.0016` | Labelled estimate of compute cost per running minute, shown as telemetry. |
+
+## Daytona
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DAYTONA_API_KEY` | none | Enables the Daytona sandbox fallback for `run_in_sandbox` when Fly is not configured. |
+
+## Persistence
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NEXT_PUBLIC_CONVEX_URL` | none | Convex deployment URL. When set, the Treasury persists to Convex. Otherwise an in-memory store is used. |
+
+## Identity (optional Google sign-in)
+
+The public Firebase web config is in `src/lib/firebase.ts`. Server-side verification uses the Firebase Admin credentials:
+
+| Variable | Purpose |
+| --- | --- |
+| `FIREBASE_PROJECT_ID` | Admin SDK project id. |
+| `FIREBASE_CLIENT_EMAIL` | Admin SDK service account email. |
+| `FIREBASE_PRIVATE_KEY` | Admin SDK private key. Never committed. |
+
+<Warning>
+  Never commit `.env.local` or any service account JSON. Secrets are set as Fly secrets in production and read from `.env.local` locally.
+</Warning>
+
+## Scaling the agent body
+
+To give agents more horsepower for heavy jobs, raise the spec:
+
+```bash
+flyctl secrets set HERMESCO_AGENT_CPUS=8 HERMESCO_AGENT_MEMORY_MB=16384 --app hermesco
+```
+
+New agent machines pick up the larger spec on their next provision.
