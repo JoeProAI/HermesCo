@@ -179,21 +179,37 @@ export default function Landing() {
             Hermes<span style={{ color: GOLD }}>Co</span>
           </span>
         </div>
-        <Link
-          href="/command"
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 13,
-            color: INK,
-            background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`,
-            padding: "10px 18px",
-            borderRadius: 8,
-            textDecoration: "none",
-            fontWeight: 600,
-          }}
-        >
-          Command Center →
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: "clamp(14px, 3vw, 26px)" }}>
+          <a
+            href="https://docs.hermesco.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 13,
+              color: "rgba(237,230,217,0.82)",
+              textDecoration: "none",
+              letterSpacing: "0.02em",
+            }}
+          >
+            Docs
+          </a>
+          <Link
+            href="/command"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 13,
+              color: INK,
+              background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`,
+              padding: "10px 18px",
+              borderRadius: 8,
+              textDecoration: "none",
+              fontWeight: 600,
+            }}
+          >
+            Command Center →
+          </Link>
+        </div>
       </nav>
 
       {/* hero */}
@@ -527,6 +543,147 @@ export default function Landing() {
             An autonomous agent you can actually trust with a credit card, because the human
             holds the caps, and the caps are absolute.
           </p>
+        </div>
+      </section>
+
+      {/* docs band */}
+      <section
+        id="docs"
+        style={{
+          position: "relative",
+          zIndex: 1,
+          maxWidth: 1280,
+          margin: "0 auto",
+          padding: "10px clamp(20px, 5vw, 64px) 70px",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 16,
+            marginBottom: 26,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 12,
+                letterSpacing: "0.16em",
+                color: GOLD,
+                marginBottom: 12,
+              }}
+            >
+              DOCUMENTATION
+            </div>
+            <h2
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: "clamp(26px, 4vw, 42px)",
+                fontWeight: 400,
+                margin: 0,
+                maxWidth: 620,
+                lineHeight: 1.1,
+              }}
+            >
+              Read how it works, then build on it
+            </h2>
+          </div>
+          <a
+            href="https://docs.hermesco.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 13,
+              color: TEAL,
+              border: "1px solid rgba(91,214,192,0.34)",
+              padding: "12px 20px",
+              borderRadius: 10,
+              textDecoration: "none",
+              background: "rgba(91,214,192,0.06)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Open the docs →
+          </a>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(232px, 1fr))",
+            gap: 16,
+          }}
+        >
+          {[
+            ["Quickstart", "Run a job end to end in about 60 seconds with the Stripe test card.", "https://docs.hermesco.ai/quickstart", GOLD],
+            ["Architecture", "How decide, screen, settle, and the Treasury fit together.", "https://docs.hermesco.ai/architecture", TEAL],
+            ["Treasury & safety", "The hard caps and the NVIDIA Nemotron screen, explained.", "https://docs.hermesco.ai/concepts/safety", "#8FB7F0"],
+            ["API reference", "Drive the agent and Treasury directly over HTTP.", "https://docs.hermesco.ai/api-reference/introduction", GOLD],
+          ].map(([t, b, href, accent], i) => (
+            <motion.a
+              key={t}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              custom={i}
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: "-60px" }}
+              whileHover={{ y: -4 }}
+              style={{
+                position: "relative",
+                overflow: "hidden",
+                border: "1px solid rgba(237,230,217,0.10)",
+                borderRadius: 14,
+                padding: "24px 22px",
+                background:
+                  "linear-gradient(180deg, rgba(20,20,23,0.72), rgba(14,14,16,0.55))",
+                backdropFilter: "blur(8px)",
+                textDecoration: "none",
+                display: "block",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 2,
+                  background: `linear-gradient(90deg, ${accent}, transparent)`,
+                }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 10,
+                }}
+              >
+                <span style={{ fontFamily: "var(--font-display)", fontSize: 20, color: CREAM }}>
+                  {t}
+                </span>
+                <span style={{ color: accent, fontFamily: "var(--font-mono)", fontSize: 15 }}>→</span>
+              </div>
+              <p
+                style={{
+                  color: "rgba(237,230,217,0.62)",
+                  fontSize: 14,
+                  lineHeight: 1.55,
+                  margin: 0,
+                }}
+              >
+                {b}
+              </p>
+            </motion.a>
+          ))}
         </div>
       </section>
 
