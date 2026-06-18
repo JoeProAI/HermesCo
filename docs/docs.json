@@ -4,9 +4,32 @@
   "name": "HermesCo",
   "description": "A one-agent company: Hermes decides, NVIDIA Nemotron screens, Stripe settles, with every dollar gated by a human-in-the-loop Treasury.",
   "colors": {
-    "primary": "#3B57E6",
-    "light": "#6E97FF",
-    "dark": "#1E2F8E"
+    "primary": "#E0A35A",
+    "light": "#F0C088",
+    "dark": "#C8893E"
+  },
+  "appearance": {
+    "default": "dark"
+  },
+  "background": {
+    "color": {
+      "dark": "#0E0E10",
+      "light": "#FBF8F1"
+    },
+    "decoration": "gradient"
+  },
+  "fonts": {
+    "heading": {
+      "family": "DM Serif Display",
+      "weight": 400
+    },
+    "body": {
+      "family": "Space Grotesk"
+    }
+  },
+  "styling": {
+    "eyebrows": "section",
+    "codeblocks": "dark"
   },
   "favicon": "/favicon.svg",
   "navigation": {
@@ -62,7 +85,21 @@
   },
   "logo": {
     "light": "/images/hermesco-mark.svg",
-    "dark": "/images/hermesco-mark.svg"
+    "dark": "/images/hermesco-mark.svg",
+    "href": "https://hermesco.ai"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Home",
+        "href": "https://hermesco.ai"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Command Center",
+      "href": "https://hermesco.ai/command"
+    }
   },
   "footer": {
     "socials": {
