@@ -39,3 +39,6 @@ h3 {
 .callout[data-callout-type="note"] [data-component-part="callout-icon"] svg {
   color: var(--hermes-gold) !important;
 }
+.callout[data-callout-type="note"] [data-component-part="callout-content"] {
+  color: var(--hermes-cream) !important;
+}
