@@ -13,10 +13,12 @@ import { randomUUID } from "node:crypto";
 import type { Job, Proposal } from "./types";
 import { getJob, getProposal, listJobs as storeListJobs, putJob } from "./store";
 import { createOffer, listOfferPayments } from "./stripe-skills";
-import { collectOfferRevenue, createSpend } from "./treasury";
+import { collectOfferRevenue, createSpend, ensureWorkspace } from "./treasury";
 import { runForAgent } from "./sandbox";
-import { getService, SERVICES } from "./services";
+import { getService, SERVICES, type ServiceSpec } from "./services";
 import { AGENT_SPEC } from "./fly";
+import { gpuMaxCostUsd, modalConfigured, runGpuJob } from "./modal";
+import { screenSpend } from "./safety";
 
 const COMPUTE_USD_PER_MIN = Number(process.env.HERMESCO_COMPUTE_USD_PER_MIN) || 0.0016;
 // Each job reserves a dedicated compute window on the agent's Fly machine. We
@@ -167,6 +169,12 @@ export async function fulfillJob(workspaceId: string, jobId: string): Promise<Fu
     return { job, outcome: "failed", message: job.error };
   }
 
+  // GPU jobs run on a REAL rented Modal GPU (external vendor spend), not the
+  // agent's own Fly machine. Route them through the GPU rental pipeline.
+  if (svc.substrate === "modal-gpu") {
+    return fulfillGpuJob(workspaceId, job, svc);
+  }
+
   const compute = await ensureComputeSpend(workspaceId, job);
   if (compute.pending) {
     job.status = "paid";
@@ -190,6 +198,13 @@ export async function fulfillJob(workspaceId: string, jobId: string): Promise<Fu
       message: `Compute spend refused by the Treasury: ${job.error}`,
       spend: compute.spend ?? undefined,
     };
+  }
+
+  if (!svc.buildCommand) {
+    job.status = "failed";
+    job.error = `Service "${svc.key}" has no runnable command.`;
+    await putJob(job);
+    return { job, outcome: "failed", message: job.error };
   }
 
   // 3. Run the real job on the agent's Fly machine.
@@ -227,6 +242,126 @@ export async function fulfillJob(workspaceId: string, jobId: string): Promise<Fu
   job.deliveredAt = Date.now();
   await putJob(job);
   return { job, outcome: "failed", message: job.error, spend: compute.spend ?? undefined };
+}
+
+// FULFILL (GPU) - the agent autonomously rents a REAL external GPU from Modal
+// to run the job. It screens the worst-case rental cost before spending a cent,
+// rents the GPU, runs the real workload, then books the REAL metered Modal cost
+// as a NemoClaw-screened, capped Treasury spend. Profit = price minus GPU cost.
+async function fulfillGpuJob(
+  workspaceId: string,
+  job: Job,
+  svc: ServiceSpec,
+): Promise<FulfillResult> {
+  const gpu = svc.gpu ?? { type: "L4", maxRuntimeSec: 240 };
+
+  if (!modalConfigured()) {
+    job.status = "failed";
+    job.error = "Modal GPU substrate is not configured on this deployment.";
+    await putJob(job);
+    return { job, outcome: "failed", message: job.error };
+  }
+
+  // Pre-flight: screen the worst-case rental cost BEFORE any real money leaves
+  // the account. The rental timeout bounds the maximum billable seconds, so an
+  // over-cap or prohibited rental is refused before Modal is ever called.
+  const budget = await ensureWorkspace(workspaceId);
+  const maxCost = gpuMaxCostUsd(gpu.type, gpu.maxRuntimeSec);
+  const preflight = await screenSpend({
+    amountUsd: maxCost,
+    vendor: "Modal",
+    purpose: `Rent a Modal ${gpu.type} GPU (<= ${gpu.maxRuntimeSec}s) to run job ${job.id} (${svc.name}): ${job.brief}`,
+    budget,
+  });
+  if (preflight.risk === "blocked" || maxCost > budget.maxSpendPerActionUsd) {
+    job.status = "paid";
+    job.error = `GPU rental refused before spending: ${preflight.reason}`;
+    await putJob(job);
+    return {
+      job,
+      outcome: "spend_refused",
+      message: `Compute spend refused by the Treasury: ${job.error}`,
+    };
+  }
+
+  // Rent the real GPU and run the real workload (this is the external spend).
+  job.status = "delivering";
+  await putJob(job);
+
+  let run;
+  try {
+    run = await runGpuJob(job.brief, { gpuType: gpu.type, maxRuntimeSec: gpu.maxRuntimeSec });
+  } catch (err) {
+    job.status = "failed";
+    job.error = `GPU rental failed: ${err instanceof Error ? err.message : String(err)}`;
+    job.deliveredAt = Date.now();
+    await putJob(job);
+    return { job, outcome: "failed", message: job.error };
+  }
+
+  job.machineId = `modal:${run.gpuType}`;
+  job.deliverable = run.output;
+
+  if (!run.ok) {
+    job.status = "failed";
+    job.error = run.error || "GPU job failed.";
+    job.deliveredAt = Date.now();
+    await putJob(job);
+    return { job, outcome: "failed", message: job.error };
+  }
+
+  // Settle: book the REAL metered Modal cost as a screened, capped spend. Under
+  // the auto-approve band it executes with no human tap; the ledger debit is
+  // the real cost of the GPU just rented.
+  const spend = await createSpend(workspaceId, {
+    title: `GPU rental for ${svc.name}`,
+    amountUsd: run.costUsd,
+    vendor: "Modal",
+    purpose: `Rented a real Modal ${run.gpuType} GPU (${run.cudaDevice || run.gpuType}) for ${run.gpuSeconds.toFixed(
+      1,
+    )} GPU-seconds to run job ${job.id} (${svc.name}). Real metered cost.`,
+  });
+  job.spendProposalId = spend.id;
+
+  if (spend.status === "pending") {
+    job.status = "paid";
+    await putJob(job);
+    return {
+      job,
+      outcome: "awaiting_spend_approval",
+      message: `The GPU rental cost $${run.costUsd.toFixed(
+        2,
+      )} is awaiting human approval in the Treasury. Approve it to finalize the delivery.`,
+      spend,
+    };
+  }
+  if (spend.status !== "executed" && spend.status !== "approved") {
+    job.status = "failed";
+    job.error = spend.safetyReason || spend.error || "GPU rental spend refused.";
+    await putJob(job);
+    return {
+      job,
+      outcome: "spend_refused",
+      message: `GPU rental refused by the Treasury: ${job.error}`,
+      spend,
+    };
+  }
+
+  job.computeCostUsd = run.costUsd;
+  job.status = "delivered";
+  job.error = undefined;
+  job.deliveredAt = Date.now();
+  await putJob(job);
+  return {
+    job,
+    outcome: "delivered",
+    message: `Delivered on a real Modal ${run.gpuType} GPU (${run.gpuSeconds.toFixed(
+      1,
+    )} GPU-s, ${run.durationMs} ms). Net profit on this job: $${(
+      job.priceUsd - run.costUsd
+    ).toFixed(2)}.`,
+    spend,
+  };
 }
 
 export async function listJobs(workspaceId: string): Promise<Job[]> {

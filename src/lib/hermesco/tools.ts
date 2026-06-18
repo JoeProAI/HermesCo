@@ -22,7 +22,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     name: "list_services",
     description:
-      "List the real services HermesCo can sell. Each one runs a concrete job on your Fly machine and returns a usable deliverable. Read this to pick the right service for the customer's task.",
+      "List the real services HermesCo can sell. Each one runs a concrete job and returns a usable deliverable. Most run on your own Fly machine; the GPU sweep rents a REAL cloud GPU from Modal (see each service's runs_on). Read this to pick the right service for the customer's task.",
     parameters: {},
   },
   {
@@ -38,7 +38,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     name: "deliver_job",
     description:
-      "Fulfil a quoted job once the customer has paid. Pass the `job_id` from quote_job. This verifies the real Stripe payment, credits the revenue, books the compute spend through the Treasury (NemoClaw screens it, hard caps hold), runs the real job on your Fly machine, and returns the deliverable. If the compute spend needs human approval it will say so; approve it in the Treasury, then call deliver_job again.",
+      "Fulfil a quoted job once the customer has paid. Pass the `job_id` from quote_job. This verifies the real Stripe payment, credits the revenue, runs the real job on the right substrate (your Fly machine, or a REAL rented Modal GPU for GPU jobs), and books the real compute/GPU cost through the Treasury (NemoClaw screens it, hard caps hold). For GPU jobs the cost is Modal's real metered per-second rate. If the spend needs human approval it will say so; approve it in the Treasury, then call deliver_job again.",
     parameters: { job_id: "string (the id returned by quote_job)" },
   },
   {

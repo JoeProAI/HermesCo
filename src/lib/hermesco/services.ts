@@ -16,8 +16,14 @@ export interface ServiceSpec {
   briefLabel: string; // what the brief field should contain
   briefPlaceholder: string;
   suggestedPriceUsd: number;
-  // Build the real bash command from the customer's brief.
-  buildCommand: (brief: string) => string;
+  // Where the real work runs. "fly" (default) runs a bash command on the
+  // agent's own Fly machine; "modal-gpu" rents a REAL external GPU from Modal.
+  substrate?: "fly" | "modal-gpu";
+  // For modal-gpu services: which GPU to rent and the hard runtime ceiling that
+  // bounds the maximum billable cost (used to screen the spend before renting).
+  gpu?: { type: string; maxRuntimeSec: number };
+  // Build the real bash command from the customer's brief (fly substrate only).
+  buildCommand?: (brief: string) => string;
 }
 
 const ART_DIR = "/root/hermesco_jobs";
@@ -46,6 +52,19 @@ def emit(obj):
     print("ARTIFACT:" + path)`;
 
 export const SERVICES: ServiceSpec[] = [
+  {
+    key: "gpu-sweep",
+    name: "GPU Hyperparameter Sweep",
+    tagline:
+      "Rent a real cloud GPU on demand and run a hyperparameter sweep (parameter golf); get the winning config back.",
+    deliverable:
+      "deliverable.json: the best hyperparameters, full leaderboard, the real GPU used, and the real GPU-seconds billed.",
+    briefLabel: "Sweep objective",
+    briefPlaceholder: "Tune a small classifier on a hard 2-class spiral dataset",
+    suggestedPriceUsd: 30,
+    substrate: "modal-gpu",
+    gpu: { type: "L4", maxRuntimeSec: 240 },
+  },
   {
     key: "web-extract",
     name: "Web Extract",
@@ -154,6 +173,12 @@ export function getService(key: string): ServiceSpec | null {
   return SERVICES.find((s) => s.key === key) ?? null;
 }
 
+export function serviceRunsOn(s: ServiceSpec): string {
+  return s.substrate === "modal-gpu"
+    ? `Modal ${s.gpu?.type ?? "GPU"} (a real rented cloud GPU)`
+    : "the agent's own Fly machine";
+}
+
 // A compact catalog the agent can read to decide what it can sell.
 export function serviceCatalog(): Array<{
   key: string;
@@ -162,6 +187,7 @@ export function serviceCatalog(): Array<{
   deliverable: string;
   brief: string;
   suggested_price_usd: number;
+  runs_on: string;
 }> {
   return SERVICES.map((s) => ({
     key: s.key,
@@ -170,5 +196,6 @@ export function serviceCatalog(): Array<{
     deliverable: s.deliverable,
     brief: s.briefLabel,
     suggested_price_usd: s.suggestedPriceUsd,
+    runs_on: serviceRunsOn(s),
   }));
 }
