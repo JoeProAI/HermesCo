@@ -1,0 +1,84 @@
+---
+title: "Fleet: list and provision"
+description: "GET and POST /api/hermesco/agents"
+---
+
+## List the fleet
+
+```http
+GET /api/hermesco/agents
+```
+
+Returns every real Fly agent machine HermesCo has spun up, plus the default spec and whether Fly is configured.
+
+<ResponseField name="configured" type="boolean">
+  True when `FLY_API_TOKEN` is set. When false, `machines` is empty and provisioning is disabled.
+</ResponseField>
+
+<ResponseField name="spec" type="object">
+  The default agent body spec: `{ image, cpuKind, cpus, memoryMb, region, app }`.
+</ResponseField>
+
+<ResponseField name="machines" type="AgentMachine[]">
+  The live fleet. Each machine includes `id`, `name`, `state`, `region`, `image`, `cpuKind`, `cpus`, `memoryMb`, `role`, `agentId`, `workspaceId`, `goal`, `createdAt`, `uptimeMs`, and `computeCostUsd`.
+</ResponseField>
+
+```bash
+curl -s https://hermesco.ai/api/hermesco/agents | jq
+```
+
+```json
+{
+  "configured": true,
+  "spec": {
+    "image": "nikolaik/python-nodejs:python3.12-nodejs22",
+    "cpuKind": "performance",
+    "cpus": 2,
+    "memoryMb": 4096,
+    "region": "iad",
+    "app": "hermesco-agents"
+  },
+  "machines": []
+}
+```
+
+## Provision a machine
+
+```http
+POST /api/hermesco/agents
+```
+
+Spins up a new dedicated, performance-class Fly machine as an agent body.
+
+<ParamField body="workspaceId" type="string">
+  Tags the machine to a workspace so it can be reused by `ensureAgentBody`.
+</ParamField>
+
+<ParamField body="goal" type="string">
+  A short description of what this body is for. Surfaced on the machine card.
+</ParamField>
+
+<ParamField body="agentId" type="string">
+  Optional explicit agent id.
+</ParamField>
+
+<ParamField body="label" type="string">
+  Optional human label.
+</ParamField>
+
+<ResponseField name="machine" type="AgentMachine">
+  The provisioned machine, waited until it reaches `started`.
+</ResponseField>
+
+```bash
+curl -s https://hermesco.ai/api/hermesco/agents \
+  -H "content-type: application/json" \
+  -d '{"workspaceId":"g_demo","goal":"Deliver the first logo order"}' | jq
+```
+
+## Errors
+
+| Status | Condition |
+| --- | --- |
+| `400` | Fly is not connected (`FLY_API_TOKEN` unset). |
+| `500` | The Fly API returned an error (returned in `error`). |

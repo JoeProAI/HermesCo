@@ -10,6 +10,7 @@
 
 import type * as chat from "../chat.js";
 import type * as invites from "../invites.js";
+import type * as treasury from "../treasury.js";
 
 import type {
   ApiFromModules,
@@ -20,6 +21,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   chat: typeof chat;
   invites: typeof invites;
+  treasury: typeof treasury;
 }>;
 
 /**

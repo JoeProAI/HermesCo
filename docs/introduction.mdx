@@ -1,0 +1,69 @@
+---
+title: "HermesCo"
+description: "A one-agent company that earns, spends, and runs real operations, with every dollar gated by a human-in-the-loop Treasury and hard caps it cannot breach."
+---
+
+## What HermesCo is
+
+HermesCo is a single autonomous operator that runs like a one-person company. It can stand up an offer, take real payments, do real work on its own machine, and pay for the tools it needs. The difference from a normal agent is that it physically cannot lose your money: every spend is screened by an always-on safety layer and bounded by hard caps that are enforced in code at execution time, not promised in a prompt.
+
+It is built around one pipeline that unifies three systems:
+
+<CardGroup cols={3}>
+  <Card title="Hermes decides" icon="brain">
+    Hermes 4 405B (Nous Research) is the operator brain. It reasons, plans, and drives every tool through Hermes's native `<tool_call>` protocol.
+  </Card>
+  <Card title="Nemotron screens" icon="shield-check">
+    NVIDIA Nemotron is the always-on NemoClaw safety screen. It reviews every spend before money can move.
+  </Card>
+  <Card title="Stripe settles" icon="credit-card">
+    Stripe is the money rail. Real Checkout, real payment links, real PaymentIntents. No fabricated revenue, no test card shortcuts.
+  </Card>
+</CardGroup>
+
+## The core guarantee
+
+The Treasury holds only real capital: what you deposit plus what the agent actually earns through Stripe. Before any spend executes, it passes a deterministic gate:
+
+```
+spend amount > per-action cap   -> refused in code (NemoClaw refuses)
+spend amount >= auto-approve     -> held for a human decision
+otherwise                        -> auto-approved, then caps re-checked
+```
+
+The caps (per-action, daily, minimum reserve) are not advisory. They are evaluated at execution time, so even a fully autonomous run cannot overspend. This is the "you can trust it with a credit card" property, and it is demonstrable without any Stripe key: ask the agent to spend over the cap and watch the Treasury refuse it.
+
+## What makes it real
+
+<AccordionGroup>
+  <Accordion title="Each agent runs on its own machine">
+    `run_in_sandbox` is not a server-side stub. Each agent is provisioned a dedicated, multi-core Fly Machine (Python 3.12, Node 22, git, bash) as its body. It does real work there, the machine is metered, and it suspends to $0 compute when idle. See [Per-agent Fly machines](/concepts/fly-machines).
+  </Accordion>
+  <Accordion title="Money is real Stripe, end to end">
+    Deposits run through real Stripe Checkout. Earning stands up a real product and payment link. Spending debits real capital under approval and caps. The same code path runs in Stripe test mode or live mode by swapping a single key. See [Treasury](/concepts/treasury).
+  </Accordion>
+  <Accordion title="Zero fake data">
+    If Stripe is not connected, the money tools fail honestly ("Stripe is not connected") rather than fabricating a payment. There is no seeded balance, no simulated revenue, and no canned test card anywhere in the codebase.
+  </Accordion>
+</AccordionGroup>
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="play" href="/quickstart">
+    Run HermesCo locally and drive the agent in a few minutes.
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    The full picture: brain, safety, money, body, and persistence.
+  </Card>
+  <Card title="The pipeline" icon="diagram-project" href="/concepts/pipeline">
+    How Hermes, Nemotron, and Stripe fit into one loop.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/introduction">
+    Every HermesCo endpoint, with request and response shapes.
+  </Card>
+</CardGroup>
+
+<Note>
+  Engineering partner: Cognition AI and Devin. HermesCo was built as an entry for the Hermes Agent Accelerated Business Hackathon (NVIDIA, Stripe, Nous Research).
+</Note>

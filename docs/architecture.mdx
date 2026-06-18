@@ -1,0 +1,79 @@
+---
+title: "Architecture"
+description: "How the brain, safety screen, money rail, agent body, and persistence fit together."
+---
+
+## The whole picture
+
+HermesCo is a Next.js application (App Router) that hosts the agent loop, the Treasury, and the Command Center UI. The agent reasons with Hermes 4 405B, every spend is screened by NVIDIA Nemotron, money moves through Stripe, and the agent's real work runs on a dedicated Fly Machine. State persists in Convex when configured, with an in-memory fallback otherwise.
+
+```
+                          Command Center  (/command)
+                                  |
+                                  v
+   POST /api/hermesco/agent  -->  runTurn()           src/lib/hermesco/agent.ts
+        |                            |
+        |                            |  Hermes 4 405B via OpenRouter
+        |                            |  drives tools through <tool_call> XML
+        |                            v
+        |                       executeTool()          src/lib/hermesco/tools.ts
+        |                        /     |        \
+        |          check_treasury  propose_spend   run_in_sandbox
+        |                |             |                  |
+        |                v             v                  v
+        |          Treasury       screenSpend()      runForAgent()
+        |       treasury.ts        safety.ts          sandbox.ts
+        |                |             |                  |
+        |                |   Nemotron + hard caps    Fly Machine (or Daytona)
+        |                v                               fly.ts
+        |             store.ts  ----> Convex or in-memory
+        |
+        +--> Stripe (Checkout, payment links, PaymentIntents)  stripe-skills.ts
+```
+
+## Components
+
+<CardGroup cols={2}>
+  <Card title="Brain" icon="brain" href="/concepts/pipeline">
+    Hermes 4 405B reasons and emits `<tool_call>` blocks. The server parses them, runs the tool, feeds the result back, and loops up to a bounded number of steps.
+  </Card>
+  <Card title="Safety screen" icon="shield-check" href="/concepts/safety">
+    Every spend passes a deterministic policy gate and an NVIDIA Nemotron classification before it can execute.
+  </Card>
+  <Card title="Money rail" icon="credit-card" href="/concepts/treasury">
+    The Treasury holds real capital and records a signed ledger. The agent's Stripe skills (server-side wrappers over the official Stripe API) create offers, collect revenue, and run deposits.
+  </Card>
+  <Card title="Agent body" icon="server" href="/concepts/fly-machines">
+    Each agent is a dedicated Fly Machine. The agent execs real commands on it, and it suspends to $0 when idle.
+  </Card>
+</CardGroup>
+
+## Request lifecycle of one directive
+
+1. The Command Center posts the directive and conversation history to `POST /api/hermesco/agent`.
+2. `runTurn` sends the system prompt, tool specs, and history to Hermes 4 405B through OpenRouter.
+3. Hermes responds with prose and zero or more `<tool_call>` blocks containing JSON.
+4. The server executes each tool. Money tools route through the Treasury and the safety screen.
+5. Tool results are appended as `<tool_response>` and Hermes is called again, up to `MAX_STEPS`.
+6. The loop ends when Hermes stops calling tools or a spend is awaiting human approval. The turn returns a structured `AgentTurnResult` (events, assistant text, awaiting-approval flag, and the live Treasury state).
+
+## Why a server-parsed tool protocol
+
+Hermes 4 405B on OpenRouter does not expose native function calling, so HermesCo drives tools through Hermes's own `<tool_call>` convention and parses them server-side. This keeps Hermes genuinely in control of the money and infrastructure tools, which is the authentic Nous approach. Nemotron rides underneath as the safety classifier rather than as a competing brain.
+
+## Source map
+
+| Area | File |
+| --- | --- |
+| Agent loop | `src/lib/hermesco/agent.ts` |
+| Tools | `src/lib/hermesco/tools.ts` |
+| Models and chat client (OpenRouter + NVIDIA) | `src/lib/hermesco/models.ts` |
+| Safety screen | `src/lib/hermesco/safety.ts` |
+| Treasury | `src/lib/hermesco/treasury.ts` |
+| Stripe Skills | `src/lib/hermesco/stripe-skills.ts` |
+| Agent body (Fly) | `src/lib/hermesco/fly.ts` |
+| Sandbox router | `src/lib/hermesco/sandbox.ts` |
+| Persistence | `src/lib/hermesco/store.ts` |
+| Identity | `src/lib/hermesco/useIdentity.ts` |
+| Domain types | `src/lib/hermesco/types.ts` |
+| Command Center | `src/app/command/page.tsx` |

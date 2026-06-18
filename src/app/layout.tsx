@@ -1,15 +1,9 @@
 import { Analytics } from "@vercel/analytics/react";
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Space_Grotesk, DM_Serif_Display, Instrument_Serif, Instrument_Sans } from "next/font/google";
+import { JetBrains_Mono, Space_Grotesk, DM_Serif_Display, Instrument_Serif, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers";
 import ThemeToggle from "@/components/ThemeToggle";
-
-const inter = Inter({
-  variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono",
@@ -18,7 +12,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 const spaceGrotesk = Space_Grotesk({
-  variable: "--font-heading",
+  variable: "--font-body",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
@@ -45,7 +39,7 @@ const instrumentSans = Instrument_Sans({
 export const metadata: Metadata = {
   title: "HermesCo | The autonomous business that can't lose money.",
   description:
-    "A one-agent company powered by Nous Research Hermes and NVIDIA Nemotron. It earns, spends, and runs real operations — every dollar gated by a human-in-the-loop Treasury with hard caps it cannot breach.",
+    "A one-agent company powered by Nous Research Hermes and NVIDIA Nemotron. It earns, spends, and runs real operations, with every dollar gated by a human-in-the-loop Treasury and hard caps it cannot breach.",
   metadataBase: new URL("https://hermesco.app"),
   keywords: [
     "AI agents",
@@ -85,7 +79,7 @@ export const metadata: Metadata = {
     siteName: "HermesCo",
     title: "HermesCo | The autonomous business that can't lose money.",
     description:
-      "Hermes earns, spends, and runs real operations — every dollar gated by a human-in-the-loop Treasury with hard caps. Powered by Nous Hermes, NVIDIA Nemotron, and Stripe.",
+      "Hermes earns, spends, and runs real operations, with every dollar gated by a human-in-the-loop Treasury and hard caps. Powered by Nous Hermes, NVIDIA Nemotron, and Stripe.",
     images: [
       {
         url: "/og-hermesco.png",
@@ -99,13 +93,13 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "HermesCo | The autonomous business that can't lose money.",
     description:
-      "Hermes earns, spends, and runs real operations — every dollar gated by a human-in-the-loop Treasury with hard caps. Powered by Nous Hermes, NVIDIA Nemotron, and Stripe.",
+      "Hermes earns, spends, and runs real operations, with every dollar gated by a human-in-the-loop Treasury and hard caps. Powered by Nous Hermes, NVIDIA Nemotron, and Stripe.",
     images: ["/og-hermesco.png"],
     creator: "@NousResearch",
   },
   icons: {
-    icon: [{ url: "/favicon.ico" }],
-    shortcut: "/favicon.ico",
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    shortcut: "/favicon.svg",
     apple: "/apple-touch-icon.svg",
   },
 };
@@ -123,8 +117,9 @@ const jsonLd = {
     "Autonomous agent that earns and spends real money",
     "Human-in-the-loop Treasury with approve/deny",
     "Hard spend caps enforced at execution time",
-    "NemoClaw safety screening (NVIDIA Nemotron)",
-    "Hermes 4 405B and Nemotron 3 Ultra brains",
+    "Always-on NemoClaw safety screening (NVIDIA Nemotron)",
+    "Unified pipeline: Hermes decides, Nemotron screens, Stripe settles",
+    "Each agent runs on its own dedicated Fly machine",
     "Stripe-powered earn and spend skills",
   ],
 };
@@ -147,7 +142,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable} ${dmSerif.variable} ${instrumentSerif.variable} ${instrumentSans.variable} antialiased`}>
+      <body className={`${jetbrainsMono.variable} ${spaceGrotesk.variable} ${dmSerif.variable} ${instrumentSerif.variable} ${instrumentSans.variable} antialiased`}>
         <Providers>{children}</Providers>
         <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 60 }}>
           <ThemeToggle />

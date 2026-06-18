@@ -1,0 +1,82 @@
+---
+title: "Per-agent Fly machines"
+description: "Each agent gets its own dedicated, multi-core Fly Machine as its body. Real work, metered, suspends to $0 when idle."
+---
+
+## The agent has a body
+
+When the agent needs to do real work, it does not run a server-side stub. It runs on a dedicated Fly Machine provisioned as that agent's body: a multi-core performance box with Python 3.12, Node 22, git, and bash. The agent execs real commands on it through Fly's Machines API, the machine is metered, and it suspends to $0 compute when idle.
+
+This is the "run real operations at any scale" substrate, reused from the clawd.run launchpad and refocused on autonomous agent bodies. The implementation is `src/lib/hermesco/fly.ts`.
+
+## Default spec
+
+```ts
+AGENT_SPEC = {
+  image: "nikolaik/python-nodejs:python3.12-nodejs22",
+  cpuKind: "performance",   // dedicated vCPUs, not the shared-cpu minimum
+  cpus: 2,
+  memoryMb: 4096,
+  region: "iad",
+  app: "hermesco-agents",
+}
+```
+
+Every value is tunable via environment variables. See [Configuration](/configuration).
+
+## Lifecycle
+
+```
+provisionAgentMachine()  ->  create + wait for "started"
+        |
+        v
+   execOnMachine(id, cmd)  ->  real exit code + stdout/stderr
+        |
+        v
+   suspendAgentMachine(id) ->  state "suspended", compute cost stops accruing
+        |
+        v
+   startAgentMachine(id)   ->  warm resume
+        |
+        v
+   destroyAgentMachine(id) ->  cleanup
+```
+
+Agent bodies live in a dedicated Fly app (`hermesco-agents`) that is separate from the web app. They do not need a public IP because all execution happens through the Machines API.
+
+## Reuse by workspace
+
+An agent body is tied to a workspace. `ensureAgentBody(workspaceId, goal)` finds the existing, non-destroyed machine for that workspace or provisions a new one. This means a workspace keeps the same machine (and its files) across directives, rather than spinning up a fresh box every time.
+
+```ts
+const machine = await ensureAgentBody(workspaceId, goal);
+const run = await execOnMachine(machine.id, command);
+```
+
+## Compute cost is telemetry, not a silent debit
+
+The fleet surfaces an estimated Fly compute cost per machine. It accrues only while a machine's state is `started`:
+
+```ts
+// mapMachine, src/lib/hermesco/fly.ts
+const billing = state === "started";
+const uptimeMs = billing ? Date.now() - createdAt : 0;
+const computeCostUsd = billing ? (uptimeMs / 60000) * COMPUTE_USD_PER_MIN : 0;
+```
+
+This is a labelled estimate shown as infrastructure telemetry. It is never silently debited from the Treasury, which stays driven by real Stripe activity and human-approved spends.
+
+## Honest fallback
+
+If `FLY_API_TOKEN` is not set, `flyConfigured()` returns false. The fleet endpoint reports `configured: false` and `run_in_sandbox` falls back to a Daytona sandbox. Nothing is faked; the system simply uses the substrate that is available.
+
+```ts
+// src/lib/hermesco/sandbox.ts
+export async function runForAgent(workspaceId, command, opts) {
+  if (flyConfigured()) {
+    const machine = await ensureAgentBody(workspaceId, opts?.goal);
+    return execOnMachine(machine.id, command, opts);  // substrate: "fly-machine"
+  }
+  return runInSandbox(command, opts);                   // substrate: "daytona"
+}
+```

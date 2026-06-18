@@ -1,0 +1,59 @@
+---
+title: "Deposit capital"
+description: "POST and GET /api/hermesco/treasury/deposit"
+---
+
+Deposits add real capital to the Treasury through Stripe Checkout. Both calls require Stripe to be connected; otherwise they fail honestly.
+
+## Start a deposit
+
+```http
+POST /api/hermesco/treasury/deposit
+```
+
+Creates a real Stripe Checkout session for the amount and returns the URL to redirect to.
+
+<ParamField body="amountUsd" type="number" required>
+  The amount to deposit. Minimum $1.
+</ParamField>
+
+<ParamField body="workspaceId" type="string" default="demo">
+  The workspace to credit on return.
+</ParamField>
+
+The response is the Checkout session (including its `url`). The success URL returns to `/command?deposit_session={CHECKOUT_SESSION_ID}` and the cancel URL to `/command?deposit_cancelled=1`.
+
+```bash
+curl -s https://hermesco.ai/api/hermesco/treasury/deposit \
+  -H "content-type: application/json" \
+  -d '{"workspaceId":"g_demo","amountUsd":100}' | jq
+```
+
+## Confirm a deposit
+
+```http
+GET /api/hermesco/treasury/deposit
+```
+
+Confirms a returned Checkout session and credits the Treasury. Crediting is idempotent on the Stripe session id, so a refresh or double return cannot double-count.
+
+<ParamField query="session_id" type="string" required>
+  The Stripe Checkout session id returned to the success URL.
+</ParamField>
+
+<ParamField query="workspaceId" type="string" default="demo">
+  The workspace to credit. Must match the workspace the deposit was started for.
+</ParamField>
+
+<ResponseField name="paid" type="boolean">Whether Stripe confirms the session was paid.</ResponseField>
+<ResponseField name="duplicate" type="boolean">True if this session was already credited.</ResponseField>
+<ResponseField name="depositedUsd" type="number">The confirmed amount.</ResponseField>
+<ResponseField name="state" type="TreasuryState">The Treasury state after crediting.</ResponseField>
+
+## Errors
+
+| Status | Condition |
+| --- | --- |
+| `400` | Stripe not connected, `amountUsd` below $1, or `session_id` missing. |
+| `403` | The deposit belongs to a different workspace. |
+| `500` | A Stripe error (returned in `error`). |

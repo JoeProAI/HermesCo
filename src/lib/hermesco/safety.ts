@@ -1,4 +1,4 @@
-// HermesCo — NemoClaw safe-runtime screen.
+// HermesCo - NemoClaw safe-runtime screen.
 //
 // Every money move is screened before it can execute. Two layers:
 //  1. Deterministic policy: prohibited-use patterns + hard numeric caps. This
@@ -7,7 +7,7 @@
 //     human review. On any error it fails SAFE-by-deferring to layer 1, never
 //     blocking the happy path on a model outage.
 
-import { chatComplete, SAFETY_MODEL_ID } from "./models";
+import { chatComplete, safetyProvider, SAFETY_MODEL_ID } from "./models";
 import type { Budget, RiskLevel } from "./types";
 
 const PROHIBITED = [
@@ -23,7 +23,7 @@ export interface SafetyVerdict {
   reason: string;
 }
 
-// Deterministic numeric gate — the inviolable part of "can't lose money".
+// Deterministic numeric gate - the inviolable part of "can't lose money".
 export function capVerdict(amountUsd: number, budget: Budget): SafetyVerdict {
   if (amountUsd > budget.maxSpendPerActionUsd) {
     return {
@@ -34,7 +34,7 @@ export function capVerdict(amountUsd: number, budget: Budget): SafetyVerdict {
   if (amountUsd >= budget.autoApproveUnderUsd) {
     return {
       risk: "review",
-      reason: `$${amountUsd} is at or above the auto-approve threshold ($${budget.autoApproveUnderUsd}) — needs a human tap.`,
+      reason: `$${amountUsd} is at or above the auto-approve threshold ($${budget.autoApproveUnderUsd}). Needs a human tap.`,
     };
   }
   return { risk: "safe", reason: "Within the auto-approve band and all hard caps." };
@@ -61,16 +61,19 @@ export async function classifyWithNemotron(input: {
   details: string;
 }): Promise<SafetyVerdict | null> {
   try {
+    // Nemotron is a reasoning model. "/no_think" keeps it from spending its whole
+    // token budget thinking out loud, so it returns the verdict JSON directly.
     const { content } = await chatComplete({
+      provider: safetyProvider(),
       modelId: SAFETY_MODEL_ID,
       temperature: 0,
-      maxTokens: 160,
-      timeoutMs: 12000,
+      maxTokens: 700,
+      timeoutMs: 22000,
       messages: [
         {
           role: "system",
           content:
-            "You are NemoClaw, an NVIDIA Nemotron safety screen for an autonomous business agent. " +
+            "/no_think You are NemoClaw, an NVIDIA Nemotron safety screen for an autonomous business agent. " +
             "Classify the proposed action. Respond with ONLY compact JSON: " +
             '{"risk":"safe|review|blocked","reason":"<one short sentence>"}. ' +
             'Use "blocked" only for clearly illegal or abusive activity; "review" for anything ' +
@@ -89,7 +92,7 @@ export async function classifyWithNemotron(input: {
     if (!risk) return null;
     return { risk, reason: parsed.reason || "Flagged by NemoClaw (NVIDIA Nemotron) screen." };
   } catch {
-    return null; // model unavailable — defer to deterministic layers
+    return null; // model unavailable - defer to deterministic layers
   }
 }
 

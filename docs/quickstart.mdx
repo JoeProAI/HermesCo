@@ -1,0 +1,74 @@
+---
+title: "Quickstart"
+description: "Run HermesCo locally, drive the agent, and watch the Treasury enforce its caps."
+---
+
+## Prerequisites
+
+- Node.js 22 (the project pins to Node 22; `nvm use 22` if you use nvm)
+- An OpenRouter API key for inference (Hermes 4 405B and Nemotron run through OpenRouter)
+- Optional: a Stripe key (test mode is recommended), a Fly API token, and a Convex deployment URL. The app runs without these and degrades honestly.
+
+## Install and run
+
+```bash
+git clone https://github.com/JoeProAI/HermesCo.git
+cd HermesCo
+npm ci
+npm run dev
+```
+
+The dev server starts on `http://localhost:3000`. Open `/command` to land in the Command Center as a guest.
+
+## Environment
+
+Create `.env.local`. Only `OPENROUTER_API_KEY` is required to drive the agent.
+
+```bash
+# Required: inference for Hermes 4 405B and Nemotron
+OPENROUTER_API_KEY=sk-or-...
+
+# Optional: real money loop (test mode recommended). Without it, money tools fail honestly.
+STRIPE_SECRET_KEY=sk_test_...
+
+# Optional: real per-agent Fly machines. Without it, run_in_sandbox falls back to Daytona.
+FLY_API_TOKEN=...
+
+# Optional: durable persistence. Without it, an in-memory store is used per server instance.
+NEXT_PUBLIC_CONVEX_URL=https://...convex.cloud
+```
+
+<Note>
+  HermesCo never fabricates state. With no Stripe key, `stripeMode` reports `none` and deposit and earn are disabled rather than faked. With no Fly token, the agent's machine work runs on Daytona instead.
+</Note>
+
+## Drive the agent
+
+In the Command Center, issue a directive. For example:
+
+```
+Propose a $120 per month CoreWeave GPU server to expand capacity.
+Route it through the Treasury for a decision before any money moves.
+```
+
+Hermes will check the Treasury, then call `propose_spend`. Because $120 is over the $50 per-action cap, the spend is refused in code by the safety layer. The balance and net profit stay at $0. This is the "can't lose money" guarantee, and it needs no Stripe key to demonstrate.
+
+## Try the money loop (optional, needs a Stripe key)
+
+With a `sk_test_...` key set:
+
+1. Deposit capital through real Stripe Checkout (use Stripe test card `4242 4242 4242 4242`).
+2. Ask the agent to create an offer. It stands up a real Stripe product and payment link.
+3. Pay the link with a test card, then ask the agent to collect payment. Real revenue is credited.
+4. Ask for a spend under the cap. It auto-approves and debits real capital.
+
+Everything is real Stripe (Checkout, payment links, PaymentIntents). Test mode simply means no real dollars move, which makes it safe for anyone to run end to end.
+
+## Verify it is healthy
+
+```bash
+curl -s http://localhost:3000/api/hermesco/treasury?workspaceId=local | jq
+curl -s http://localhost:3000/api/hermesco/agents | jq
+```
+
+The first returns the live Treasury state. The second returns the agent fleet and whether Fly is configured.

@@ -2,15 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import type {
   AgentEvent,
   AgentTurnResult,
-  ModelKey,
+  Job,
+  JobStatus,
   Proposal,
   TreasuryState,
 } from "@/lib/hermesco/types";
+import type { AgentMachine } from "@/lib/hermesco/fly";
 import { useIdentity, type Identity } from "@/lib/hermesco/useIdentity";
+import MessengerNetwork from "@/components/MessengerNetwork";
+import HermesMark from "@/components/HermesMark";
 
 const INK = "#0E0E10";
 const SURFACE = "#131316";
@@ -18,8 +21,11 @@ const GOLD = "#E0A35A";
 const GOLD_DEEP = "#C8893E";
 const CREAM = "#EDE6D9";
 const TEAL = "#5BD6C0";
+const BLUE = "#6E97FF";
+const NVIDIA = "#76B900";
 const DANGER = "#ef4444";
 const SUCCESS = "#22c55e";
+const WARN = "#F59E0B";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -29,21 +35,78 @@ interface LogEntry {
   events?: AgentEvent[];
 }
 
+interface FleetData {
+  configured: boolean;
+  spec: {
+    image: string;
+    cpuKind: string;
+    cpus: number;
+    memoryMb: number;
+    region: string;
+    app: string;
+  } | null;
+  machines: AgentMachine[];
+  error: string | null;
+}
+
+// Real business directives, not demo scripts. Each one exercises the full
+// pipeline: Hermes decides, Nemotron screens, Stripe settles, on a Fly machine.
 const PRESETS = [
-  "Launch a $20 logo-design service, take a test payment from a client, then get the design tool you need to deliver.",
-  "You need a premium API to deliver a client report. Check the treasury, then propose the spend you need.",
-  "Submit a proposal to spend $120 on a GPU server from CoreWeave — don't refuse it yourself, let the Treasury rule on it so I can watch the NemoClaw cap refuse it.",
+  "A customer needs the headings and links from https://news.ycombinator.com as clean JSON. Quote a Web Extract job, then deliver it once they pay.",
+  "Quote a Repo Pack job for https://github.com/sindresorhus/slugify so a customer can size up the codebase, then fulfil it after the payment lands.",
+  "Propose a $120 per month CoreWeave GPU server to expand capacity. Route it through the Treasury for a decision before any money moves.",
 ];
+
+// The service catalog shape returned by GET /api/hermesco/jobs (mirrors
+// serviceCatalog() in services.ts). Kept local so this client bundle does not
+// pull in the node-only service implementations.
+interface ServiceCatalogItem {
+  key: string;
+  name: string;
+  tagline: string;
+  deliverable: string;
+  brief: string;
+  suggested_price_usd: number;
+}
 
 const money = (n: number) =>
   `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+function stateMeta(state: string): { label: string; color: string } {
+  switch (state) {
+    case "started":
+      return { label: "RUNNING", color: SUCCESS };
+    case "starting":
+    case "created":
+    case "replacing":
+      return { label: "BOOTING", color: WARN };
+    case "suspended":
+      return { label: "SUSPENDED · $0", color: TEAL };
+    case "stopped":
+      return { label: "STOPPED", color: "rgba(237,230,217,0.55)" };
+    case "destroying":
+    case "destroyed":
+      return { label: "DESTROYED", color: DANGER };
+    default:
+      return { label: state.toUpperCase(), color: "rgba(237,230,217,0.6)" };
+  }
+}
+
+function fmtUptime(ms: number): string {
+  if (ms <= 0) return "0s";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
 
 export default function CommandCenter() {
   const identity = useIdentity();
   const workspaceId = identity.workspaceId;
 
   const [state, setState] = useState<TreasuryState | null>(null);
-  const [model, setModel] = useState<ModelKey>("hermes");
   const [input, setInput] = useState("");
   const [log, setLog] = useState<LogEntry[]>([]);
   const [history, setHistory] = useState<ChatMessage[]>([]);
@@ -51,7 +114,25 @@ export default function CommandCenter() {
   const [deciding, setDeciding] = useState<string | null>(null);
   const [entered, setEntered] = useState(false);
   const [authMsg, setAuthMsg] = useState<string | null>(null);
+  const [depositing, setDepositing] = useState(false);
+  const [depositMsg, setDepositMsg] = useState<string | null>(null);
+
+  const [fleet, setFleet] = useState<FleetData>({
+    configured: false,
+    spec: null,
+    machines: [],
+    error: null,
+  });
+  const [provisioning, setProvisioning] = useState(false);
+  const [machineBusy, setMachineBusy] = useState<Record<string, string>>({});
+
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [services, setServices] = useState<ServiceCatalogItem[]>([]);
+  const [jobBusy, setJobBusy] = useState<string | null>(null);
+  const [jobMsg, setJobMsg] = useState<string | null>(null);
+
   const logRef = useRef<HTMLDivElement>(null);
+  const depositHandled = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!workspaceId || workspaceId === "g_server") return;
@@ -60,6 +141,40 @@ export default function CommandCenter() {
       { cache: "no-store" },
     );
     if (res.ok) setState((await res.json()) as TreasuryState);
+  }, [workspaceId]);
+
+  const refreshFleet = useCallback(async () => {
+    try {
+      const res = await fetch("/api/hermesco/agents", { cache: "no-store" });
+      const data = (await res.json()) as Partial<FleetData> & { error?: string };
+      setFleet({
+        configured: !!data.configured,
+        spec: data.spec ?? null,
+        machines: Array.isArray(data.machines) ? data.machines : [],
+        error: data.error ?? null,
+      });
+    } catch (err) {
+      setFleet((f) => ({ ...f, error: String(err) }));
+    }
+  }, []);
+
+  const refreshJobs = useCallback(async () => {
+    if (!workspaceId || workspaceId === "g_server") return;
+    try {
+      const res = await fetch(
+        `/api/hermesco/jobs?workspaceId=${encodeURIComponent(workspaceId)}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        jobs?: Job[];
+        services?: ServiceCatalogItem[];
+      };
+      if (Array.isArray(data.jobs)) setJobs(data.jobs);
+      if (Array.isArray(data.services)) setServices(data.services);
+    } catch {
+      // non-fatal: the order book just stays as-is until the next refresh
+    }
   }, [workspaceId]);
 
   useEffect(() => {
@@ -73,12 +188,59 @@ export default function CommandCenter() {
     setState(null);
     setLog([]);
     setHistory([]);
+    setJobs([]);
     void refresh();
-  }, [identity.ready, workspaceId, refresh]);
+    void refreshJobs();
+  }, [identity.ready, workspaceId, refresh, refreshJobs]);
+
+  // Live fleet polling: surface real Fly machines as they boot, suspend, or wake.
+  useEffect(() => {
+    if (!entered || !identity.ready) return;
+    void refreshFleet();
+    const t = setInterval(() => void refreshFleet(), 6000);
+    return () => clearInterval(t);
+  }, [entered, identity.ready, refreshFleet]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
   }, [log, busy]);
+
+  // Returning from Stripe Checkout: confirm the deposit and credit the Treasury.
+  useEffect(() => {
+    if (!workspaceId || workspaceId === "g_server" || depositHandled.current) return;
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const sessionId = url.searchParams.get("deposit_session");
+    const cancelled = url.searchParams.get("deposit_cancelled");
+    if (!sessionId && !cancelled) return;
+    depositHandled.current = true;
+    url.searchParams.delete("deposit_session");
+    url.searchParams.delete("deposit_cancelled");
+    window.history.replaceState({}, "", url.toString());
+    if (cancelled) {
+      setDepositMsg("Deposit cancelled.");
+      return;
+    }
+    void (async () => {
+      const res = await fetch(
+        `/api/hermesco/treasury/deposit?session_id=${encodeURIComponent(sessionId!)}&workspaceId=${encodeURIComponent(workspaceId)}`,
+      );
+      const data = (await res.json()) as {
+        ok?: boolean;
+        paid?: boolean;
+        depositedUsd?: number;
+        state?: TreasuryState;
+        error?: string;
+      };
+      if (data.error) setDepositMsg(data.error);
+      else if (data.ok && data.state) {
+        setState(data.state);
+        setDepositMsg(`Deposited ${money(data.depositedUsd ?? 0)} into the Treasury.`);
+      } else if (data.paid === false) {
+        setDepositMsg("Payment not completed.");
+      }
+    })();
+  }, [workspaceId]);
 
   async function send(message: string) {
     if (!message.trim() || busy) return;
@@ -89,7 +251,7 @@ export default function CommandCenter() {
       const res = await fetch("/api/hermesco/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId, model, message, history }),
+        body: JSON.stringify({ workspaceId, message, history }),
       });
       const data = (await res.json()) as AgentTurnResult & { error?: string };
       if (data.error) {
@@ -107,6 +269,8 @@ export default function CommandCenter() {
       setLog((l) => [...l, { who: "hermes", text: `Network error: ${String(err)}` }]);
     } finally {
       setBusy(false);
+      void refreshFleet();
+      void refreshJobs();
     }
   }
 
@@ -124,6 +288,86 @@ export default function CommandCenter() {
       }
     } finally {
       setDeciding(null);
+      void refreshJobs();
+    }
+  }
+
+  // Quote a real customer job: stand up a Stripe payment link and add it to the
+  // order book. Nothing is earned until the customer pays the link.
+  async function quoteJob(input: { service: string; brief: string; priceUsd: number }) {
+    setJobBusy("quote");
+    setJobMsg(null);
+    try {
+      const res = await fetch("/api/hermesco/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId, action: "quote", ...input }),
+      });
+      const data = (await res.json()) as { job?: Job; state?: TreasuryState; error?: string };
+      if (data.error) setJobMsg(data.error);
+      else {
+        if (data.state) setState(data.state);
+        setJobMsg("Job quoted. Share the payment link with the customer, then deliver once paid.");
+      }
+    } catch (err) {
+      setJobMsg(`Network error: ${String(err)}`);
+    } finally {
+      setJobBusy(null);
+      void refreshJobs();
+    }
+  }
+
+  // Fulfil a paid job: verify the Stripe payment, book the screened compute
+  // spend, run the real work on the Fly machine, return the deliverable.
+  async function deliverJob(jobId: string) {
+    setJobBusy(jobId);
+    setJobMsg(null);
+    try {
+      const res = await fetch("/api/hermesco/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId, action: "deliver", jobId }),
+      });
+      const data = (await res.json()) as {
+        outcome?: string;
+        message?: string;
+        state?: TreasuryState;
+        error?: string;
+      };
+      if (data.error) setJobMsg(data.error);
+      else {
+        if (data.state) setState(data.state);
+        if (data.message) setJobMsg(data.message);
+      }
+    } catch (err) {
+      setJobMsg(`Network error: ${String(err)}`);
+    } finally {
+      setJobBusy(null);
+      void refreshFleet();
+      void refreshJobs();
+    }
+  }
+
+  async function deposit(amountUsd: number) {
+    if (depositing) return;
+    setDepositing(true);
+    setDepositMsg(null);
+    try {
+      const res = await fetch("/api/hermesco/treasury/deposit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId, amountUsd }),
+      });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setDepositMsg(data.error || "Could not start the deposit.");
+    } catch (err) {
+      setDepositMsg(`Network error: ${String(err)}`);
+    } finally {
+      setDepositing(false);
     }
   }
 
@@ -138,8 +382,75 @@ export default function CommandCenter() {
       if (res.ok) setState((await res.json()) as TreasuryState);
       setLog([]);
       setHistory([]);
+      setJobs([]);
+      setJobMsg(null);
     } finally {
       setBusy(false);
+      void refreshJobs();
+    }
+  }
+
+  // Pre-warm a real, dedicated Fly machine as this workspace's agent body.
+  async function provisionBody() {
+    if (provisioning) return;
+    setProvisioning(true);
+    try {
+      let lastUser = "";
+      for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].role === "user") {
+          lastUser = history[i].content;
+          break;
+        }
+      }
+      const goal = (input.trim() || lastUser || "").slice(0, 200);
+      const res = await fetch("/api/hermesco/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId, goal }),
+      });
+      await res.json().catch(() => undefined);
+    } finally {
+      setProvisioning(false);
+      void refreshFleet();
+    }
+  }
+
+  async function machineAction(id: string, action: "suspend" | "start") {
+    setMachineBusy((m) => ({ ...m, [id]: action }));
+    try {
+      const res = await fetch(`/api/hermesco/agents/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = (await res.json()) as { machine?: AgentMachine };
+      if (data.machine) {
+        setFleet((f) => ({
+          ...f,
+          machines: f.machines.map((mc) => (mc.id === id ? data.machine! : mc)),
+        }));
+      }
+    } finally {
+      setMachineBusy((m) => {
+        const next = { ...m };
+        delete next[id];
+        return next;
+      });
+      void refreshFleet();
+    }
+  }
+
+  async function destroyMachine(id: string) {
+    setMachineBusy((m) => ({ ...m, [id]: "destroy" }));
+    try {
+      await fetch(`/api/hermesco/agents/${id}`, { method: "DELETE" });
+    } finally {
+      setMachineBusy((m) => {
+        const next = { ...m };
+        delete next[id];
+        return next;
+      });
+      void refreshFleet();
     }
   }
 
@@ -171,22 +482,26 @@ export default function CommandCenter() {
         fontFamily: "var(--font-body)",
       }}
     >
+      <MessengerNetwork dim opacity={0.3} interactive={false} maxNodes={90} />
       <div
         style={{
           position: "fixed",
           inset: 0,
           pointerEvents: "none",
+          zIndex: 0,
           background:
-            "radial-gradient(800px 500px at 85% 0%, rgba(200,137,62,0.12), transparent 60%)",
+            "radial-gradient(900px 600px at 85% -5%, rgba(200,137,62,0.13), transparent 60%), radial-gradient(1100px 800px at 50% 55%, rgba(14,14,16,0.6), transparent 75%)",
         }}
       />
       {showGate && (
         <EntryGate onGuest={continueAsGuest} onGoogle={doSignIn} authMsg={authMsg} />
       )}
+
       {/* top bar */}
       <header
         style={{
           position: "relative",
+          zIndex: 1,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -198,8 +513,8 @@ export default function CommandCenter() {
           href="/"
           style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: CREAM }}
         >
-          <Image src="/hermes-emblem.png" alt="HermesCo" width={30} height={30} />
-          <span style={{ fontFamily: "var(--font-editorial-serif)", fontSize: 19 }}>
+          <HermesMark size={30} idPrefix="hm-cmd-nav" />
+          <span style={{ fontFamily: "var(--font-display)", fontSize: 19 }}>
             Hermes<span style={{ color: GOLD }}>Co</span>
           </span>
           <span
@@ -216,8 +531,8 @@ export default function CommandCenter() {
         </Link>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <IdentityControl identity={identity} onSignIn={doSignIn} />
-          <ModelToggle model={model} setModel={setModel} disabled={busy} />
           <button
+            className="hc-press"
             onClick={reset}
             disabled={busy}
             style={{
@@ -231,46 +546,61 @@ export default function CommandCenter() {
               cursor: busy ? "default" : "pointer",
             }}
           >
-            Reset demo
+            Reset workspace
           </button>
         </div>
       </header>
 
+      {/* unified pipeline strip: one agent, three sponsors, no toggle */}
+      <PipelineStrip />
+
       <div
+        className="hc-cmd-grid"
         style={{
           position: "relative",
+          zIndex: 1,
           display: "grid",
           gridTemplateColumns: "minmax(0, 1fr) minmax(340px, 460px)",
           gap: 0,
-          height: "calc(100vh - 63px)",
+          height: "calc(100vh - 63px - 46px)",
         }}
       >
-        {/* AGENT COLUMN */}
+        {/* OPERATIONS COLUMN */}
         <section style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+          <FleetPanel
+            fleet={fleet}
+            provisioning={provisioning}
+            machineBusy={machineBusy}
+            onProvision={provisionBody}
+            onMachineAction={machineAction}
+            onDestroy={destroyMachine}
+          />
+
           <div
             ref={logRef}
-            style={{ flex: 1, overflowY: "auto", padding: "22px clamp(16px, 3vw, 32px)" }}
+            style={{ flex: 1, overflowY: "auto", padding: "20px clamp(16px, 3vw, 32px)" }}
           >
             {log.length === 0 && (
-              <div style={{ maxWidth: 560, margin: "8vh auto 0", textAlign: "center" }}>
-                <Image src="/hermes-emblem.png" alt="" width={64} height={64} style={{ opacity: 0.9 }} />
+              <div style={{ maxWidth: 600, margin: "4vh auto 0", textAlign: "center" }}>
+                <HermesMark size={64} idPrefix="hm-cmd-hero" style={{ opacity: 0.95 }} />
                 <h2
                   style={{
-                    fontFamily: "var(--font-editorial-serif)",
+                    fontFamily: "var(--font-display)",
                     fontWeight: 400,
                     fontSize: 28,
                     margin: "16px 0 8px",
                   }}
                 >
-                  Give Hermes a business goal.
+                  Give Hermes a business directive.
                 </h2>
                 <p style={{ color: "rgba(237,230,217,0.55)", fontSize: 15, marginBottom: 22 }}>
-                  It will earn, spend, and operate — pausing for your approval whenever real money is
-                  on the line.
+                  Hermes spins up its own machine, earns and spends real money, and pauses for your
+                  approval whenever a dollar is on the line.
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {PRESETS.map((p) => (
                     <button
+                      className="hc-press"
                       key={p}
                       onClick={() => send(p)}
                       disabled={busy}
@@ -295,52 +625,32 @@ export default function CommandCenter() {
 
             {log.map((entry, i) =>
               entry.who === "you" ? (
-                <div key={i} style={{ display: "flex", justifyContent: "flex-end", margin: "14px 0" }}>
-                  <div
-                    style={{
-                      background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`,
-                      color: INK,
-                      padding: "10px 16px",
-                      borderRadius: "14px 14px 4px 14px",
-                      maxWidth: "78%",
-                      fontSize: 14,
-                      fontWeight: 500,
-                    }}
-                  >
-                    {entry.text}
-                  </div>
-                </div>
+                <DirectiveRow key={i} text={entry.text ?? ""} />
               ) : (
-                <div key={i} style={{ margin: "14px 0" }}>
+                <div key={i} style={{ margin: "4px 0 18px" }}>
                   {entry.events && <EventStream events={entry.events} />}
-                  {entry.text && (
-                    <div
-                      style={{
-                        background: SURFACE,
-                        border: "1px solid rgba(237,230,217,0.10)",
-                        padding: "12px 16px",
-                        borderRadius: "4px 14px 14px 14px",
-                        maxWidth: "85%",
-                        fontSize: 14.5,
-                        lineHeight: 1.55,
-                        whiteSpace: "pre-wrap",
-                        marginTop: entry.events?.length ? 10 : 0,
-                      }}
-                    >
-                      {entry.text}
-                    </div>
-                  )}
+                  {entry.text && <ReportBlock text={entry.text} />}
                 </div>
               ),
             )}
             {busy && (
-              <div style={{ display: "flex", gap: 7, alignItems: "center", margin: "14px 4px", color: "rgba(237,230,217,0.5)", fontFamily: "var(--font-mono)", fontSize: 13 }}>
-                <Dot /> <Dot d={0.2} /> <Dot d={0.4} /> Hermes is working…
+              <div
+                style={{
+                  display: "flex",
+                  gap: 7,
+                  alignItems: "center",
+                  margin: "14px 2px",
+                  color: "rgba(237,230,217,0.5)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 13,
+                }}
+              >
+                <Dot /> <Dot d={0.2} /> <Dot d={0.4} /> Hermes is operating.
               </div>
             )}
           </div>
 
-          {/* composer */}
+          {/* directive composer */}
           <div
             style={{
               borderTop: "1px solid rgba(237,230,217,0.08)",
@@ -353,7 +663,7 @@ export default function CommandCenter() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && send(input)}
-              placeholder="Tell Hermes what to do…"
+              placeholder="Issue a directive to Hermes."
               disabled={busy}
               style={{
                 flex: 1,
@@ -368,10 +678,14 @@ export default function CommandCenter() {
               }}
             />
             <button
+              className="hc-press"
               onClick={() => send(input)}
               disabled={busy || !input.trim()}
               style={{
-                background: busy || !input.trim() ? "rgba(237,230,217,0.12)" : `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`,
+                background:
+                  busy || !input.trim()
+                    ? "rgba(237,230,217,0.12)"
+                    : `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`,
                 color: busy || !input.trim() ? "rgba(237,230,217,0.4)" : INK,
                 border: "none",
                 borderRadius: 10,
@@ -382,13 +696,14 @@ export default function CommandCenter() {
                 cursor: busy || !input.trim() ? "default" : "pointer",
               }}
             >
-              Send
+              Dispatch
             </button>
           </div>
         </section>
 
         {/* TREASURY COLUMN */}
         <aside
+          className="hc-cmd-aside"
           style={{
             borderLeft: "1px solid rgba(237,230,217,0.08)",
             background: "rgba(0,0,0,0.25)",
@@ -396,11 +711,26 @@ export default function CommandCenter() {
             padding: "20px clamp(16px, 2vw, 24px)",
           }}
         >
+          <JobDeskPanel
+            jobs={jobs}
+            services={services}
+            stripeMode={state?.stripeMode ?? "none"}
+            jobBusy={jobBusy}
+            jobMsg={jobMsg}
+            onQuote={quoteJob}
+            onDeliver={deliverJob}
+          />
+
+          <div style={{ height: 24 }} />
+
           <TreasuryPanel
             state={state}
             pending={pending}
             deciding={deciding}
             onDecide={decide}
+            onDeposit={deposit}
+            depositing={depositing}
+            depositMsg={depositMsg}
           />
         </aside>
       </div>
@@ -408,46 +738,797 @@ export default function CommandCenter() {
   );
 }
 
-function ModelToggle({
-  model,
-  setModel,
-  disabled,
+function jobStatusMeta(status: JobStatus): { label: string; color: string } {
+  switch (status) {
+    case "quoted":
+      return { label: "QUOTED", color: WARN };
+    case "paid":
+      return { label: "PAID", color: BLUE };
+    case "delivering":
+      return { label: "DELIVERING", color: TEAL };
+    case "delivered":
+      return { label: "DELIVERED", color: SUCCESS };
+    case "failed":
+      return { label: "FAILED", color: DANGER };
+    default:
+      return { label: String(status).toUpperCase(), color: "rgba(237,230,217,0.6)" };
+  }
+}
+
+function JobDeskPanel({
+  jobs,
+  services,
+  stripeMode,
+  jobBusy,
+  jobMsg,
+  onQuote,
+  onDeliver,
 }: {
-  model: ModelKey;
-  setModel: (m: ModelKey) => void;
-  disabled: boolean;
+  jobs: Job[];
+  services: ServiceCatalogItem[];
+  stripeMode: "none" | "test" | "live";
+  jobBusy: string | null;
+  jobMsg: string | null;
+  onQuote: (input: { service: string; brief: string; priceUsd: number }) => void;
+  onDeliver: (jobId: string) => void;
 }) {
-  const opts: { key: ModelKey; label: string }[] = [
-    { key: "hermes", label: "Hermes 4" },
-    { key: "nemotron", label: "Nemotron 3" },
-  ];
+  const [open, setOpen] = useState(false);
+  const [service, setService] = useState("");
+  const [brief, setBrief] = useState("");
+  const [price, setPrice] = useState("");
+
+  const canQuote = stripeMode !== "none";
+  const quoting = jobBusy === "quote";
+
+  // Effective selection falls back to the first service until the operator picks
+  // one, derived in render so we never write state in an effect.
+  const effectiveService = service || services[0]?.key || "";
+  const selected = services.find((s) => s.key === effectiveService) ?? null;
+  const effectivePrice =
+    price !== "" ? price : selected ? String(selected.suggested_price_usd) : "";
+
+  function pickService(key: string) {
+    setService(key);
+    const svc = services.find((s) => s.key === key);
+    setPrice(svc ? String(svc.suggested_price_usd) : "");
+  }
+
+  function submit() {
+    const priceUsd = Number(effectivePrice) || (selected?.suggested_price_usd ?? 0);
+    if (!effectiveService || !brief.trim() || priceUsd <= 0) return;
+    onQuote({ service: effectiveService, brief: brief.trim(), priceUsd });
+    setBrief("");
+    setOpen(false);
+  }
+
   return (
-    <div
-      style={{
-        display: "flex",
-        border: "1px solid rgba(237,230,217,0.16)",
-        borderRadius: 8,
-        overflow: "hidden",
-      }}
-    >
-      {opts.map((o) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 400, fontSize: 20, margin: 0 }}>
+          Job Desk
+        </h3>
         <button
-          key={o.key}
-          onClick={() => !disabled && setModel(o.key)}
+          className="hc-press"
+          onClick={() => setOpen((v) => !v)}
+          disabled={!canQuote}
+          title={canQuote ? "" : "Connect Stripe to quote real jobs."}
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: 12,
-            padding: "8px 12px",
+            fontWeight: 700,
+            color: canQuote ? INK : "rgba(237,230,217,0.4)",
+            background: canQuote ? `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})` : "rgba(237,230,217,0.12)",
             border: "none",
-            cursor: disabled ? "default" : "pointer",
-            background: model === o.key ? `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})` : "transparent",
-            color: model === o.key ? INK : "rgba(237,230,217,0.7)",
-            fontWeight: model === o.key ? 700 : 400,
+            borderRadius: 8,
+            padding: "7px 13px",
+            cursor: canQuote ? "pointer" : "default",
+            whiteSpace: "nowrap",
           }}
         >
-          {o.label}
+          {open ? "Close" : "New order"}
         </button>
-      ))}
+      </div>
+
+      <p
+        style={{
+          margin: 0,
+          fontFamily: "var(--font-body)",
+          fontSize: 12.5,
+          lineHeight: 1.55,
+          color: "rgba(237,230,217,0.55)",
+        }}
+      >
+        HermesCo sells real units of compute work. Quote a job, the customer pays the Stripe link,
+        then Hermes runs it on a Fly machine and returns the deliverable. Profit = price minus
+        compute.
+      </p>
+
+      {open && (
+        <div
+          style={{
+            border: "1px solid rgba(224,163,90,0.3)",
+            borderRadius: 12,
+            padding: "14px 14px",
+            background: "rgba(224,163,90,0.05)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 11,
+          }}
+        >
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.1em", color: "rgba(237,230,217,0.5)" }}>
+              SERVICE
+            </span>
+            <select
+              value={effectiveService}
+              onChange={(e) => pickService(e.target.value)}
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 13,
+                color: CREAM,
+                background: INK,
+                border: "1px solid rgba(237,230,217,0.18)",
+                borderRadius: 8,
+                padding: "9px 10px",
+              }}
+            >
+              {services.length === 0 && <option value="">Loading services.</option>}
+              {services.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.name} (from {money(s.suggested_price_usd)})
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {selected && (
+            <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "rgba(237,230,217,0.55)", lineHeight: 1.5 }}>
+              {selected.tagline}
+              <div style={{ marginTop: 4, color: "rgba(237,230,217,0.4)" }}>
+                Returns: {selected.deliverable}
+              </div>
+            </div>
+          )}
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.1em", color: "rgba(237,230,217,0.5)" }}>
+              {selected ? selected.brief.toUpperCase() : "BRIEF"}
+            </span>
+            <textarea
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              rows={2}
+              placeholder="The customer's task: a URL, a Git repo, or a command."
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 13,
+                color: CREAM,
+                background: INK,
+                border: "1px solid rgba(237,230,217,0.18)",
+                borderRadius: 8,
+                padding: "9px 10px",
+                resize: "vertical",
+              }}
+            />
+          </label>
+
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 5, width: 110 }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.1em", color: "rgba(237,230,217,0.5)" }}>
+                PRICE USD
+              </span>
+              <input
+                type="number"
+                min={1}
+                value={effectivePrice}
+                onChange={(e) => setPrice(e.target.value)}
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 13,
+                  color: CREAM,
+                  background: INK,
+                  border: "1px solid rgba(237,230,217,0.18)",
+                  borderRadius: 8,
+                  padding: "9px 10px",
+                }}
+              />
+            </label>
+            <button
+              className="hc-press"
+              onClick={submit}
+              disabled={quoting || !brief.trim() || !effectiveService}
+              style={{
+                flex: 1,
+                fontFamily: "var(--font-mono)",
+                fontSize: 13,
+                fontWeight: 700,
+                color: quoting || !brief.trim() ? "rgba(237,230,217,0.4)" : INK,
+                background: quoting || !brief.trim() ? "rgba(237,230,217,0.12)" : `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`,
+                border: "none",
+                borderRadius: 8,
+                padding: "10px 0",
+                cursor: quoting || !brief.trim() ? "default" : "pointer",
+              }}
+            >
+              {quoting ? "Quoting." : "Quote job"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {jobMsg && (
+        <div
+          style={{
+            border: "1px solid rgba(110,151,255,0.3)",
+            borderRadius: 10,
+            padding: "10px 12px",
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            color: "rgba(237,230,217,0.8)",
+            lineHeight: 1.5,
+            background: "rgba(110,151,255,0.05)",
+          }}
+        >
+          {jobMsg}
+        </div>
+      )}
+
+      {jobs.length === 0 ? (
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            color: "rgba(237,230,217,0.4)",
+            lineHeight: 1.6,
+            border: "1px dashed rgba(237,230,217,0.14)",
+            borderRadius: 10,
+            padding: "14px 14px",
+          }}
+        >
+          No jobs on the order book yet.{" "}
+          {canQuote ? 'Click "New order" to quote one, or give Hermes a directive.' : "Connect Stripe to start quoting jobs."}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {jobs.map((j) => (
+            <JobCard key={j.id} job={j} busy={jobBusy === j.id} onDeliver={onDeliver} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function JobCard({
+  job,
+  busy,
+  onDeliver,
+}: {
+  job: Job;
+  busy: boolean;
+  onDeliver: (jobId: string) => void;
+}) {
+  const [showDeliverable, setShowDeliverable] = useState(false);
+  const meta = jobStatusMeta(job.status);
+  const net =
+    job.status === "delivered" ? job.priceUsd - (job.computeCostUsd ?? 0) : null;
+
+  return (
+    <div
+      style={{
+        border: `1px solid ${meta.color}33`,
+        borderRadius: 12,
+        padding: "13px 14px",
+        background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0))",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: CREAM }}>
+          {job.serviceName}
+        </span>
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            letterSpacing: "0.06em",
+            color: meta.color,
+            border: `1px solid ${meta.color}55`,
+            borderRadius: 999,
+            padding: "2px 8px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {meta.label}
+        </span>
+      </div>
+
+      <div
+        style={{
+          marginTop: 6,
+          fontFamily: "var(--font-mono)",
+          fontSize: 11.5,
+          color: "rgba(237,230,217,0.6)",
+          lineHeight: 1.5,
+          wordBreak: "break-word",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
+        title={job.brief}
+      >
+        {job.brief}
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 9 }}>
+        <Vital label="PRICE" value={money(job.priceUsd)} />
+        {job.computeCostUsd != null && <Vital label="COMPUTE" value={money(job.computeCostUsd)} />}
+        {net != null && <Vital label="NET PROFIT" value={money(net)} />}
+        {job.customer && <Vital label="CUSTOMER" value={job.customer} />}
+        {job.machineId && <Vital label="MACHINE" value={job.machineId} />}
+      </div>
+
+      {job.error && (
+        <div style={{ marginTop: 8, fontFamily: "var(--font-mono)", fontSize: 11, color: DANGER, lineHeight: 1.5 }}>
+          {job.error}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
+        {(job.status === "quoted" || job.status === "paid") && (
+          <a
+            className="hc-press"
+            href={job.paymentLinkUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              flex: 1,
+              textAlign: "center",
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              color: TEAL,
+              background: "transparent",
+              border: `1px solid ${TEAL}55`,
+              borderRadius: 7,
+              padding: "7px 0",
+              textDecoration: "none",
+            }}
+          >
+            Pay link
+          </a>
+        )}
+        {job.status !== "delivered" && (
+          <CardBtn
+            label={busy ? "Working." : job.status === "quoted" ? "Deliver" : "Retry deliver"}
+            onClick={() => onDeliver(job.id)}
+            disabled={busy}
+            color={GOLD}
+          />
+        )}
+        {job.deliverable && (
+          <CardBtn
+            label={showDeliverable ? "Hide" : "View output"}
+            onClick={() => setShowDeliverable((v) => !v)}
+            disabled={false}
+            color={BLUE}
+          />
+        )}
+      </div>
+
+      {showDeliverable && job.deliverable && (
+        <pre
+          style={{
+            marginTop: 10,
+            marginBottom: 0,
+            maxHeight: 220,
+            overflow: "auto",
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            lineHeight: 1.5,
+            color: "rgba(237,230,217,0.85)",
+            background: INK,
+            border: "1px solid rgba(237,230,217,0.12)",
+            borderRadius: 8,
+            padding: "10px 12px",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {job.deliverable}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function PipelineStrip() {
+  const node = (color: string, vendor: string, role: string) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: color,
+          boxShadow: `0 0 8px ${color}`,
+          flexShrink: 0,
+        }}
+      />
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: CREAM, whiteSpace: "nowrap" }}>
+        {vendor}
+        <span style={{ color: "rgba(237,230,217,0.45)" }}> · {role}</span>
+      </span>
+    </div>
+  );
+  const arrow = (
+    <span style={{ color: "rgba(237,230,217,0.3)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+      {"->"}
+    </span>
+  );
+  return (
+    <div
+      style={{
+        position: "relative",
+        zIndex: 1,
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        flexWrap: "wrap",
+        padding: "11px clamp(16px, 3vw, 32px)",
+        borderBottom: "1px solid rgba(237,230,217,0.08)",
+        background: "rgba(255,255,255,0.015)",
+      }}
+    >
+      {node(BLUE, "Hermes 4 405B", "decides")}
+      {arrow}
+      {node(NVIDIA, "NVIDIA Nemotron", "screens")}
+      {arrow}
+      {node(GOLD, "Stripe", "settles")}
+      <span
+        style={{
+          marginLeft: "auto",
+          fontFamily: "var(--font-mono)",
+          fontSize: 11,
+          letterSpacing: "0.08em",
+          color: "rgba(237,230,217,0.4)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        ONE AGENT · NEMOCLAW ALWAYS ON
+      </span>
+    </div>
+  );
+}
+
+function FleetPanel({
+  fleet,
+  provisioning,
+  machineBusy,
+  onProvision,
+  onMachineAction,
+  onDestroy,
+}: {
+  fleet: FleetData;
+  provisioning: boolean;
+  machineBusy: Record<string, string>;
+  onProvision: () => void;
+  onMachineAction: (id: string, action: "suspend" | "start") => void;
+  onDestroy: (id: string) => void;
+}) {
+  const live = fleet.machines.filter((m) => m.state !== "destroyed");
+  const totalCompute = live.reduce((s, m) => s + m.computeCostUsd, 0);
+
+  return (
+    <div
+      style={{
+        borderBottom: "1px solid rgba(237,230,217,0.08)",
+        padding: "14px clamp(16px, 3vw, 32px)",
+        background: "rgba(0,0,0,0.18)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          marginBottom: live.length || !fleet.configured ? 12 : 0,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              letterSpacing: "0.14em",
+              color: "rgba(237,230,217,0.55)",
+            }}
+          >
+            AGENT FLEET
+          </span>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: CREAM }}>
+            {live.length} machine{live.length === 1 ? "" : "s"}
+          </span>
+          {live.length > 0 && (
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "rgba(237,230,217,0.4)" }}>
+              compute {money(totalCompute)}
+            </span>
+          )}
+        </div>
+        {fleet.configured && (
+          <button
+            className="hc-press"
+            onClick={onProvision}
+            disabled={provisioning}
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 12,
+              fontWeight: 700,
+              color: provisioning ? "rgba(237,230,217,0.4)" : INK,
+              background: provisioning ? "rgba(237,230,217,0.12)" : `linear-gradient(135deg, ${BLUE}, #3B57E6)`,
+              border: "none",
+              borderRadius: 8,
+              padding: "8px 14px",
+              cursor: provisioning ? "default" : "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {provisioning ? "Spinning up." : "Spin up agent body"}
+          </button>
+        )}
+      </div>
+
+      {!fleet.configured ? (
+        <div
+          style={{
+            border: "1px dashed rgba(110,151,255,0.35)",
+            borderRadius: 10,
+            padding: "12px 14px",
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            color: "rgba(237,230,217,0.6)",
+            lineHeight: 1.6,
+          }}
+        >
+          Fly is not connected. Set FLY_API_TOKEN to spin up dedicated agent machines.
+          {fleet.spec && (
+            <div style={{ marginTop: 6, color: "rgba(237,230,217,0.45)" }}>
+              Body spec: {fleet.spec.cpus} {fleet.spec.cpuKind} vCPU · {Math.round(fleet.spec.memoryMb / 1024)} GB
+              RAM · {fleet.spec.region} · suspends to $0 when idle
+            </div>
+          )}
+        </div>
+      ) : live.length === 0 ? (
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            color: "rgba(237,230,217,0.45)",
+            lineHeight: 1.6,
+          }}
+        >
+          No machines yet. Hermes provisions one automatically on its first real task, or spin one up
+          now.
+          {fleet.spec && (
+            <span style={{ color: "rgba(237,230,217,0.35)" }}>
+              {" "}
+              Each body: {fleet.spec.cpus} {fleet.spec.cpuKind} vCPU · {Math.round(fleet.spec.memoryMb / 1024)} GB RAM ·{" "}
+              {fleet.spec.region}.
+            </span>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
+          {live.map((m) => (
+            <MachineCard
+              key={m.id}
+              m={m}
+              busy={machineBusy[m.id]}
+              onAction={onMachineAction}
+              onDestroy={onDestroy}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MachineCard({
+  m,
+  busy,
+  onAction,
+  onDestroy,
+}: {
+  m: AgentMachine;
+  busy?: string;
+  onAction: (id: string, action: "suspend" | "start") => void;
+  onDestroy: (id: string) => void;
+}) {
+  const meta = stateMeta(m.state);
+  const isRunning = m.state === "started";
+  const canResume = m.state === "suspended" || m.state === "stopped";
+
+  return (
+    <div
+      style={{
+        flex: "0 0 auto",
+        width: 244,
+        border: `1px solid ${meta.color}33`,
+        borderRadius: 12,
+        padding: "13px 14px",
+        background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0))",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: CREAM, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {m.id}
+        </span>
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            letterSpacing: "0.06em",
+            color: meta.color,
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: meta.color,
+              boxShadow: isRunning ? `0 0 7px ${meta.color}` : "none",
+            }}
+          />
+          {meta.label}
+        </span>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", marginTop: 10 }}>
+        <Vital label="REGION" value={m.region} />
+        <Vital label="CPU" value={`${m.cpus}x ${m.cpuKind}`} />
+        <Vital label="RAM" value={`${Math.round(m.memoryMb / 1024)} GB`} />
+        <Vital label="UPTIME" value={fmtUptime(m.uptimeMs)} />
+        <Vital label="COMPUTE" value={money(m.computeCostUsd)} />
+      </div>
+
+      {m.goal && (
+        <div
+          style={{
+            marginTop: 9,
+            fontFamily: "var(--font-body)",
+            fontSize: 12,
+            color: "rgba(237,230,217,0.55)",
+            lineHeight: 1.4,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {m.goal}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, marginTop: 11 }}>
+        {isRunning && (
+          <CardBtn label={busy === "suspend" ? "." : "Suspend"} onClick={() => onAction(m.id, "suspend")} disabled={!!busy} color={TEAL} />
+        )}
+        {canResume && (
+          <CardBtn label={busy === "start" ? "." : "Resume"} onClick={() => onAction(m.id, "start")} disabled={!!busy} color={SUCCESS} />
+        )}
+        <CardBtn label={busy === "destroy" ? "." : "Destroy"} onClick={() => onDestroy(m.id)} disabled={!!busy} color={DANGER} />
+      </div>
+    </div>
+  );
+}
+
+function Vital({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", color: "rgba(237,230,217,0.4)" }}>
+        {label}
+      </div>
+      <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "rgba(237,230,217,0.85)", whiteSpace: "nowrap" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function CardBtn({
+  label,
+  onClick,
+  disabled,
+  color,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled: boolean;
+  color: string;
+}) {
+  return (
+    <button
+      className="hc-press"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        flex: 1,
+        fontFamily: "var(--font-mono)",
+        fontSize: 11,
+        color: disabled ? "rgba(237,230,217,0.35)" : color,
+        background: "transparent",
+        border: `1px solid ${disabled ? "rgba(237,230,217,0.12)" : `${color}55`}`,
+        borderRadius: 7,
+        padding: "6px 0",
+        cursor: disabled ? "default" : "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function DirectiveRow({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        margin: "18px 0 10px",
+        borderLeft: `2px solid ${GOLD}`,
+        paddingLeft: 14,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 10.5,
+          letterSpacing: "0.16em",
+          color: GOLD,
+          marginBottom: 4,
+        }}
+      >
+        DIRECTIVE
+      </div>
+      <div style={{ fontSize: 15, color: CREAM, lineHeight: 1.5, fontWeight: 500 }}>{text}</div>
+    </div>
+  );
+}
+
+function ReportBlock({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        borderLeft: `2px solid rgba(110,151,255,0.6)`,
+        paddingLeft: 14,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: 10.5,
+          letterSpacing: "0.16em",
+          color: BLUE,
+          marginBottom: 4,
+        }}
+      >
+        HERMES REPORT
+      </div>
+      <div
+        style={{
+          fontSize: 14.5,
+          lineHeight: 1.6,
+          color: "rgba(237,230,217,0.92)",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {text}
+      </div>
     </div>
   );
 }
@@ -555,10 +1636,12 @@ function EntryGate({
           boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
         }}
       >
-        <Image src="/hermes-emblem.png" alt="HermesCo" width={56} height={56} style={{ margin: "0 auto" }} />
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <HermesMark size={56} idPrefix="hm-gate" />
+        </div>
         <h2
           style={{
-            fontFamily: "var(--font-editorial-serif)",
+            fontFamily: "var(--font-display)",
             fontWeight: 400,
             fontSize: 26,
             margin: "16px 0 6px",
@@ -568,10 +1651,11 @@ function EntryGate({
           Enter the Command Center
         </h2>
         <p style={{ color: "rgba(237,230,217,0.55)", fontSize: 14, lineHeight: 1.5, marginBottom: 24 }}>
-          Drive an autonomous business in real time. Continue as a guest to try it instantly, or sign
+          Drive an autonomous business in real time. Continue as a guest to start instantly, or sign
           in to keep a named operator on your approval ledger.
         </p>
         <button
+          className="hc-press"
           onClick={onGuest}
           style={{
             width: "100%",
@@ -587,9 +1671,10 @@ function EntryGate({
             marginBottom: 10,
           }}
         >
-          Continue as guest →
+          Continue as guest
         </button>
         <button
+          className="hc-press"
           onClick={onGoogle}
           style={{
             width: "100%",
@@ -618,7 +1703,7 @@ function EntryGate({
             fontFamily: "var(--font-mono)",
           }}
         >
-          No card. Test mode. Every move is policy-bounded.
+          No card to enter. Every money move is policy-bounded.
         </p>
       </div>
     </div>
@@ -626,13 +1711,13 @@ function EntryGate({
 }
 
 function EventStream({ events }: { events: AgentEvent[] }) {
+  const rows = events.filter((e) => e.kind !== "message");
+  if (rows.length === 0) return null;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: "85%" }}>
-      {events
-        .filter((e) => e.kind !== "message")
-        .map((e, i) => (
-          <EventRow key={i} e={e} />
-        ))}
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+      {rows.map((e, i) => (
+        <EventRow key={i} e={e} />
+      ))}
     </div>
   );
 }
@@ -647,26 +1732,54 @@ function EventRow({ e }: { e: AgentEvent }) {
     color: "rgba(237,230,217,0.72)",
     background: "rgba(255,255,255,0.02)",
     wordBreak: "break-word" as const,
+    display: "flex",
+    alignItems: "baseline",
+    gap: 8,
   };
   if (e.kind === "thought")
-    return <div style={{ ...base, fontStyle: "italic", color: "rgba(237,230,217,0.55)" }}>{e.text}</div>;
+    return (
+      <div style={{ ...base, fontStyle: "italic", color: "rgba(237,230,217,0.55)" }}>
+        <span className="hc-tag">THINK</span>
+        <span>{e.text}</span>
+      </div>
+    );
   if (e.kind === "tool_call")
     return (
       <div style={{ ...base, borderColor: "rgba(91,214,192,0.3)", color: TEAL }}>
-        ⚡ {e.toolName}({fmtArgs(e.toolArgs)})
+        <span className="hc-tag">CALL</span>
+        <span>
+          {e.toolName}({fmtArgs(e.toolArgs)})
+        </span>
       </div>
     );
   if (e.kind === "tool_result")
-    return <div style={{ ...base, color: "rgba(237,230,217,0.6)" }}>↳ {truncate(e.text ?? "", 220)}</div>;
-  if (e.kind === "proposal")
-    return <div style={{ ...base, borderColor: "rgba(200,137,62,0.32)", color: GOLD }}>◆ {e.text}</div>;
-  if (e.kind === "awaiting_approval")
     return (
-      <div style={{ ...base, borderColor: "rgba(245,158,11,0.5)", color: "#F59E0B", fontWeight: 600 }}>
-        ⏸ Awaiting your approval in the Treasury →
+      <div style={{ ...base, color: "rgba(237,230,217,0.6)" }}>
+        <span className="hc-tag">RESULT</span>
+        <span>{truncate(e.text ?? "", 220)}</span>
       </div>
     );
-  if (e.kind === "error") return <div style={{ ...base, color: DANGER }}>✕ {e.text}</div>;
+  if (e.kind === "proposal")
+    return (
+      <div style={{ ...base, borderColor: "rgba(200,137,62,0.32)", color: GOLD }}>
+        <span className="hc-tag">PROPOSE</span>
+        <span>{e.text}</span>
+      </div>
+    );
+  if (e.kind === "awaiting_approval")
+    return (
+      <div style={{ ...base, borderColor: "rgba(245,158,11,0.5)", color: WARN, fontWeight: 600 }}>
+        <span className="hc-tag">HOLD</span>
+        <span>Awaiting your approval in the Treasury.</span>
+      </div>
+    );
+  if (e.kind === "error")
+    return (
+      <div style={{ ...base, color: DANGER }}>
+        <span className="hc-tag">ERROR</span>
+        <span>{e.text}</span>
+      </div>
+    );
   return null;
 }
 
@@ -675,35 +1788,66 @@ function TreasuryPanel({
   pending,
   deciding,
   onDecide,
+  onDeposit,
+  depositing,
+  depositMsg,
 }: {
   state: TreasuryState | null;
   pending: Proposal[];
   deciding: string | null;
   onDecide: (id: string, d: "approve" | "deny") => void;
+  onDeposit: (amountUsd: number) => void;
+  depositing: boolean;
+  depositMsg: string | null;
 }) {
-  if (!state) return <div style={{ color: "rgba(237,230,217,0.5)", fontFamily: "var(--font-mono)", fontSize: 13 }}>Loading Treasury…</div>;
+  if (!state)
+    return (
+      <div style={{ color: "rgba(237,230,217,0.5)", fontFamily: "var(--font-mono)", fontSize: 13 }}>
+        Loading Treasury.
+      </div>
+    );
 
   const profitColor = state.netProfitUsd > 0 ? SUCCESS : state.netProfitUsd < 0 ? DANGER : CREAM;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h3 style={{ fontFamily: "var(--font-editorial-serif)", fontWeight: 400, fontSize: 20, margin: 0 }}>
+        <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 400, fontSize: 20, margin: 0 }}>
           Treasury
         </h3>
-        <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 10.5,
-            letterSpacing: "0.1em",
-            color: state.stripeMode === "test" ? TEAL : state.stripeMode === "live" ? GOLD : "rgba(237,230,217,0.4)",
-            border: `1px solid ${state.stripeMode === "none" ? "rgba(237,230,217,0.18)" : "rgba(91,214,192,0.4)"}`,
-            borderRadius: 999,
-            padding: "3px 9px",
-          }}
-        >
-          STRIPE: {state.stripeMode.toUpperCase()}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              letterSpacing: "0.1em",
+              color: state.backend === "convex" ? SUCCESS : "rgba(237,230,217,0.4)",
+              border: `1px solid ${state.backend === "convex" ? "rgba(34,197,94,0.4)" : "rgba(237,230,217,0.18)"}`,
+              borderRadius: 999,
+              padding: "3px 9px",
+            }}
+            title={
+              state.backend === "convex"
+                ? "Durable Convex persistence: balances and ledger survive restarts and redeploys."
+                : "In-memory fallback: state is not durable across redeploys."
+            }
+          >
+            {state.backend === "convex" ? "PERSISTED: CONVEX" : "PERSIST: MEMORY"}
+          </span>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 10.5,
+              letterSpacing: "0.1em",
+              color: state.stripeMode === "test" ? TEAL : state.stripeMode === "live" ? GOLD : "rgba(237,230,217,0.4)",
+              border: `1px solid ${state.stripeMode === "none" ? "rgba(237,230,217,0.18)" : "rgba(91,214,192,0.4)"}`,
+              borderRadius: 999,
+              padding: "3px 9px",
+            }}
+          >
+            STRIPE: {state.stripeMode.toUpperCase()}
+          </span>
+        </div>
       </div>
 
       {/* headline numbers */}
@@ -721,12 +1865,20 @@ function TreasuryPanel({
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 34, fontWeight: 600, color: CREAM, marginTop: 2 }}>
           {money(state.balanceUsd)}
         </div>
-        <div style={{ display: "flex", gap: 18, marginTop: 14 }}>
+        <div style={{ display: "flex", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
+          <Metric label="Deposited" value={money(state.depositsUsd)} color={GOLD} />
           <Metric label="Revenue" value={money(state.revenueUsd)} color={SUCCESS} />
           <Metric label="Spend" value={money(state.expenseUsd)} color="rgba(237,230,217,0.8)" />
           <Metric label="Net profit" value={money(state.netProfitUsd)} color={profitColor} />
         </div>
       </div>
+
+      <DepositControl
+        stripeMode={state.stripeMode}
+        onDeposit={onDeposit}
+        depositing={depositing}
+        depositMsg={depositMsg}
+      />
 
       {/* caps */}
       <div style={{ border: "1px solid rgba(237,230,217,0.10)", borderRadius: 12, padding: "14px 16px" }}>
@@ -742,8 +1894,8 @@ function TreasuryPanel({
       {/* pending approvals */}
       {pending.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#F59E0B", letterSpacing: "0.1em" }}>
-            ⏸ AWAITING APPROVAL ({pending.length})
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: WARN, letterSpacing: "0.1em" }}>
+            AWAITING APPROVAL ({pending.length})
           </div>
           {pending.map((p) => (
             <div
@@ -762,13 +1914,14 @@ function TreasuryPanel({
                 </span>
               </div>
               <div style={{ fontSize: 13, color: "rgba(237,230,217,0.6)", margin: "4px 0 6px" }}>
-                → {p.counterparty}
+                {"->"} {p.counterparty}
               </div>
               <div style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "rgba(237,230,217,0.5)", marginBottom: 12 }}>
                 {p.safetyReason}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
+                  className="hc-press"
                   onClick={() => onDecide(p.id, "approve")}
                   disabled={deciding === p.id}
                   style={{
@@ -787,6 +1940,7 @@ function TreasuryPanel({
                   Approve
                 </button>
                 <button
+                  className="hc-press"
                   onClick={() => onDecide(p.id, "deny")}
                   disabled={deciding === p.id}
                   style={{
@@ -863,13 +2017,127 @@ function TreasuryPanel({
           color: "rgba(237,230,217,0.35)",
           textAlign: "center",
           marginTop: 4,
-          lineHeight: 1.7,
+          lineHeight: 1.8,
         }}
       >
-        NemoClaw safety screening · NVIDIA Nemotron
+        Hermes 4 · Nous Research &nbsp;·&nbsp; Nemotron · NVIDIA &nbsp;·&nbsp; Payments · Stripe
         <br />
-        Engine: Cognition AI · Devin
+        Compute · Fly.io &nbsp;·&nbsp; Persistence · Convex &nbsp;·&nbsp; Sandbox · Daytona
+        <br />
+        <a
+          href="https://docs.hermesco.ai/credits"
+          style={{ color: "rgba(237,230,217,0.4)", textDecoration: "underline" }}
+        >
+          Full credits
+        </a>{" "}
+        · Built with Cognition Devin
       </div>
+    </div>
+  );
+}
+
+function DepositControl({
+  stripeMode,
+  onDeposit,
+  depositing,
+  depositMsg,
+}: {
+  stripeMode: "test" | "live" | "none";
+  onDeposit: (amountUsd: number) => void;
+  depositing: boolean;
+  depositMsg: string | null;
+}) {
+  const [custom, setCustom] = useState("");
+  const presets = [25, 50, 100];
+  const disabled = depositing || stripeMode === "none";
+
+  return (
+    <div style={{ border: "1px solid rgba(200,137,62,0.22)", borderRadius: 12, padding: "14px 16px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 10,
+        }}
+      >
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "rgba(237,230,217,0.5)", letterSpacing: "0.1em" }}>
+          FUND THE TREASURY
+        </span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: stripeMode === "live" ? GOLD : TEAL }}>
+          {stripeMode === "live" ? "REAL MONEY" : stripeMode === "test" ? "STRIPE TEST" : "STRIPE OFF"}
+        </span>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {presets.map((amt) => (
+          <button
+            className="hc-press"
+            key={amt}
+            onClick={() => onDeposit(amt)}
+            disabled={disabled}
+            style={{
+              flex: 1,
+              fontFamily: "var(--font-mono)",
+              fontSize: 13,
+              fontWeight: 700,
+              color: disabled ? "rgba(237,230,217,0.35)" : INK,
+              background: disabled ? "rgba(237,230,217,0.08)" : `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`,
+              border: "none",
+              borderRadius: 8,
+              padding: "10px 0",
+              cursor: disabled ? "default" : "pointer",
+            }}
+          >
+            ${amt}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <input
+          value={custom}
+          onChange={(e) => setCustom(e.target.value.replace(/[^0-9.]/g, ""))}
+          placeholder="Custom $"
+          inputMode="decimal"
+          disabled={disabled}
+          style={{
+            flex: 1,
+            background: SURFACE,
+            border: "1px solid rgba(237,230,217,0.14)",
+            borderRadius: 8,
+            padding: "9px 12px",
+            color: CREAM,
+            fontSize: 13.5,
+            fontFamily: "var(--font-mono)",
+            outline: "none",
+          }}
+        />
+        <button
+          className="hc-press"
+          onClick={() => {
+            const amt = parseFloat(custom);
+            if (Number.isFinite(amt) && amt >= 1) onDeposit(amt);
+          }}
+          disabled={disabled || !(parseFloat(custom) >= 1)}
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 13,
+            fontWeight: 700,
+            color: disabled || !(parseFloat(custom) >= 1) ? "rgba(237,230,217,0.35)" : INK,
+            background: disabled || !(parseFloat(custom) >= 1) ? "rgba(237,230,217,0.08)" : CREAM,
+            border: "none",
+            borderRadius: 8,
+            padding: "0 16px",
+            cursor: disabled || !(parseFloat(custom) >= 1) ? "default" : "pointer",
+          }}
+        >
+          {depositing ? "." : "Deposit"}
+        </button>
+      </div>
+      {(depositMsg || stripeMode === "none") && (
+        <p style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: stripeMode === "none" ? "rgba(237,230,217,0.4)" : TEAL, margin: "10px 0 0" }}>
+          {depositMsg || "Connect Stripe to enable real deposits."}
+        </p>
+      )}
     </div>
   );
 }
@@ -927,5 +2195,5 @@ function fmtArgs(args?: Record<string, unknown>): string {
 }
 
 function truncate(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n) + "…" : s;
+  return s.length > n ? s.slice(0, n) + "..." : s;
 }

@@ -1,19 +1,20 @@
-// HermesCo — persistence for the Treasury.
+// HermesCo - persistence for the Treasury.
 //
 // Convex-backed when NEXT_PUBLIC_CONVEX_URL is set and reachable; otherwise (or
 // on any Convex error) it transparently falls back to an in-process store so the
 // demo always runs. Convex gives durable, real-time state across serverless
-// invocations — the moment the deployment URL is set, writes persist and the
+// invocations - the moment the deployment URL is set, writes persist and the
 // command center can subscribe to live updates.
 
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
-import type { Budget, LedgerEntry, Proposal } from "./types";
+import type { Budget, Job, LedgerEntry, Proposal } from "./types";
 
 interface MemWorkspace {
   budget: Budget | null;
   proposals: Map<string, Proposal>;
   ledger: LedgerEntry[];
+  jobs: Map<string, Job>;
 }
 
 const mem = new Map<string, MemWorkspace>();
@@ -46,7 +47,7 @@ function disableConvex(err: unknown): void {
 function memWs(id: string): MemWorkspace {
   let ws = mem.get(id);
   if (!ws) {
-    ws = { budget: null, proposals: new Map(), ledger: [] };
+    ws = { budget: null, proposals: new Map(), ledger: [], jobs: new Map() };
     mem.set(id, ws);
   }
   return ws;
@@ -146,6 +147,71 @@ export async function appendLedger(e: LedgerEntry): Promise<void> {
     }
   }
   memWs(e.workspaceId).ledger.push(e);
+}
+
+// Atomic, idempotent deposit. On Convex this is a single serializable mutation
+// (dedup + insert), so concurrent retries can't double-credit. The in-memory
+// fallback dedups against the local ledger to keep the same guarantee.
+export async function recordDepositOnce(
+  e: LedgerEntry,
+  stripeRef: string,
+): Promise<{ duplicate: boolean }> {
+  if (convexEnabled) {
+    try {
+      return (await client().mutation(t.recordDepositOnce, {
+        workspaceId: e.workspaceId,
+        entryId: e.id,
+        stripeRef,
+        data: e,
+        ts: e.at,
+      })) as { duplicate: boolean };
+    } catch (err) {
+      disableConvex(err);
+    }
+  }
+  const ws = memWs(e.workspaceId);
+  if (ws.ledger.some((x) => x.stripeRef === stripeRef)) return { duplicate: true };
+  ws.ledger.push(e);
+  return { duplicate: false };
+}
+
+export async function listJobs(id: string): Promise<Job[]> {
+  if (convexEnabled) {
+    try {
+      return (await client().query(t.listJobs, { workspaceId: id })) as Job[];
+    } catch (err) {
+      disableConvex(err);
+    }
+  }
+  return Array.from(memWs(id).jobs.values());
+}
+
+export async function getJob(id: string, jobId: string): Promise<Job | null> {
+  if (convexEnabled) {
+    try {
+      return (await client().query(t.getJob, { workspaceId: id, jobId })) as Job | null;
+    } catch (err) {
+      disableConvex(err);
+    }
+  }
+  return memWs(id).jobs.get(jobId) ?? null;
+}
+
+export async function putJob(job: Job): Promise<void> {
+  if (convexEnabled) {
+    try {
+      await client().mutation(t.putJob, {
+        workspaceId: job.workspaceId,
+        jobId: job.id,
+        data: job,
+        ts: job.createdAt,
+      });
+      return;
+    } catch (err) {
+      disableConvex(err);
+    }
+  }
+  memWs(job.workspaceId).jobs.set(job.id, job);
 }
 
 export async function clearWorkspace(id: string): Promise<void> {

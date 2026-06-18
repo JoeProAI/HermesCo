@@ -1,0 +1,50 @@
+---
+title: "Credits"
+description: "Every service HermesCo actually runs on, and exactly what each one does."
+---
+
+HermesCo is built on real infrastructure. This page credits each provider and states precisely how it is used, so nothing here is decorative.
+
+## The pipeline
+
+<CardGroup cols={2}>
+  <Card title="Nous Research" icon="brain" href="https://nousresearch.com">
+    **Hermes 4 405B** (`nousresearch/hermes-4-405b`) is the operator brain. It decides what the business does and drives every tool through Hermes's native `<tool_call>` protocol.
+  </Card>
+  <Card title="NVIDIA" icon="shield-halved" href="https://build.nvidia.com">
+    **Nemotron 3 Ultra** (`nvidia/nemotron-3-ultra-550b-a55b`) is the NemoClaw safety screen on every spend. It runs on NVIDIA's own API (`integrate.api.nvidia.com`) when a key is configured.
+  </Card>
+  <Card title="Stripe" icon="credit-card" href="https://stripe.com">
+    Payments. Real Stripe Checkout, Payment Links, and PaymentIntents move every dollar in and out. The live demo runs in **test mode**: real Stripe API, zero real money.
+  </Card>
+  <Card title="Fly.io" icon="server" href="https://fly.io">
+    Compute. Each agent runs on its own Fly Machine (2 vCPU, 4 GB RAM), provisioned on demand through the Machines API and suspended to $0 when idle. Jobs execute there.
+  </Card>
+</CardGroup>
+
+## The platform
+
+<CardGroup cols={2}>
+  <Card title="Convex" icon="database" href="https://convex.dev">
+    Durable persistence. The Treasury ledger, budgets, and job records live in Convex, so balances survive restarts and redeploys. Deposits use an atomic, idempotent mutation.
+  </Card>
+  <Card title="Daytona" icon="box" href="https://daytona.io">
+    Fallback sandbox. When no Fly token is present, jobs run in a Daytona sandbox instead, so the work still executes safely in isolation.
+  </Card>
+  <Card title="OpenRouter" icon="route" href="https://openrouter.ai">
+    Model gateway. Hermes 4 is reached through OpenRouter, which is also the fallback route for the Nemotron screen.
+  </Card>
+  <Card title="Cloudflare" icon="cloud" href="https://cloudflare.com">
+    DNS for `hermesco.ai`, pointing the apex and `www` at the Fly app and the docs subdomain at Mintlify.
+  </Card>
+</CardGroup>
+
+## Tooling
+
+- **Next.js** (App Router) is the web framework for the landing page, the command console, and the API routes.
+- **Mintlify** hosts this documentation at `docs.hermesco.ai`.
+- **Cognition Devin** was the engineering agent that built and shipped HermesCo.
+
+## Built for
+
+The **Hermes Agent Accelerated Business Hackathon**, presented by NVIDIA, Stripe, and Nous Research: agents that can earn, spend, and run real operations at any scale, safely.

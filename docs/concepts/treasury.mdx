@@ -1,0 +1,90 @@
+---
+title: "Treasury"
+description: "The human-in-the-loop money control. Real capital, hard caps enforced in code, a signed ledger, and zero fabricated revenue."
+---
+
+## What the Treasury is
+
+The Treasury is the single source of truth for money. It holds only real capital: what you deposit through Stripe plus what the agent actually earns through Stripe. It records every movement as a signed ledger entry, and it enforces hard caps that the agent cannot breach. The implementation is `src/lib/hermesco/treasury.ts`.
+
+```
+balance = startingCapital + deposits + revenue - expense
+```
+
+`startingCapital` is `0`. There is no seeded balance.
+
+## The hard caps
+
+```ts
+DEFAULT_BUDGET = {
+  startingCapitalUsd: 0,
+  maxSpendPerActionUsd: 50,   // a single spend can never exceed this
+  autoApproveUnderUsd: 10,    // below this, a safe spend auto-approves
+  dailySpendCapUsd: 100,      // total spend in a day cannot exceed this
+  minReserveUsd: 20,          // balance can never be drawn below this
+}
+```
+
+These are not advisory. They are evaluated at execution time, so an autonomous run cannot overspend even if the model tries.
+
+## How a spend is decided
+
+```
+propose_spend(amount, vendor, purpose)
+        |
+        v
+   screenSpend()  (see Safety screen)
+        |
+   +----+-----------------------------+
+   |              |                    |
+ blocked       review               safe
+   |              |                    |
+ refused     amount >= autoApprove?  amount < autoApprove
+ in code        |          \            and within caps
+              yes           no                |
+               |             \                v
+        held for human   (still held)   auto-approved
+         approval                             |
+               |                              v
+               +-----------> execute: re-check caps, then
+                             debit real capital + ledger entry
+```
+
+A proposal carries a status (`pending`, `approved`, `denied`, `executed`, `failed`), the safety verdict and reason, the amount, the counterparty, and timestamps. The full shape is in [domain types](/architecture#source-map) (`Proposal` in `types.ts`).
+
+## Earning is real or it is nothing
+
+The agent earns by standing up a real Stripe product and payment link, then reconciling only what Stripe confirms was actually paid:
+
+```ts
+// collectOfferRevenue, treasury.ts
+// Credits ONLY sessions Stripe marks paid. Nothing is recorded until a real
+// customer pays the link. Idempotent on the Stripe session id.
+```
+
+There is no canned test card and no fabricated payment. If Stripe is not connected, earning fails honestly.
+
+## Deposits
+
+A deposit is real capital you add through Stripe Checkout. The deposit flow creates a Checkout session, and on return the session is confirmed and credited to the Treasury. Crediting is idempotent on the Stripe session id, so a refresh or a double return cannot double-count. See [Deposit API](/api-reference/treasury-deposit).
+
+## The ledger
+
+Every movement is a signed entry:
+
+```ts
+LedgerEntry = {
+  id, workspaceId, proposalId?,
+  type: "earn" | "spend" | "deposit",
+  amountUsd,          // positive for earn/deposit, negative for spend
+  description,
+  stripeRef?,
+  at,
+}
+```
+
+`netProfitUsd` is revenue minus expense. `balanceUsd`, `depositsUsd`, `revenueUsd`, `expenseUsd`, and `spentTodayUsd` are all derived from the ledger, never set by hand.
+
+## Why this is the headline
+
+The promise "an autonomous agent you can trust with a credit card" is only credible if it is enforced rather than asserted. In HermesCo the human holds the caps and the caps are absolute. You can prove it live with no Stripe key: ask for a spend over the per-action cap and watch the Treasury refuse it while the balance stays at $0.

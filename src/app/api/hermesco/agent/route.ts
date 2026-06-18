@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runTurn } from "@/lib/hermesco/agent";
 import type { ChatMessage } from "@/lib/hermesco/models";
-import type { ModelKey } from "@/lib/hermesco/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 interface AgentBody {
   workspaceId?: string;
-  model?: ModelKey;
   message?: string;
   history?: ChatMessage[];
 }
@@ -28,7 +26,6 @@ export async function POST(req: NextRequest) {
   try {
     const result = await runTurn({
       workspaceId,
-      model: body.model,
       message,
       history: body.history,
     });

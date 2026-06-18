@@ -86,6 +86,65 @@ export const appendLedger = mutation({
   },
 });
 
+// Atomic, idempotent deposit. Convex mutations are serializable, so the
+// stripeRef dedup check and the insert happen as one transaction - a refresh
+// or webhook retry hitting at the same time can never double-credit a deposit.
+export const recordDepositOnce = mutation({
+  args: {
+    workspaceId: v.string(),
+    entryId: v.string(),
+    stripeRef: v.string(),
+    data: v.any(),
+    ts: v.number(),
+  },
+  handler: async (ctx, { workspaceId, entryId, stripeRef, data, ts }) => {
+    const existing = await ctx.db
+      .query("treasuryLedger")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+      .collect();
+    if (existing.some((r) => r.data?.stripeRef === stripeRef)) {
+      return { duplicate: true };
+    }
+    await ctx.db.insert("treasuryLedger", { workspaceId, entryId, data, ts });
+    return { duplicate: false };
+  },
+});
+
+export const listJobs = query({
+  args: { workspaceId: v.string() },
+  handler: async (ctx, { workspaceId }) => {
+    const rows = await ctx.db
+      .query("treasuryJobs")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+      .order("asc")
+      .collect();
+    return rows.map((r) => r.data);
+  },
+});
+
+export const getJob = query({
+  args: { workspaceId: v.string(), jobId: v.string() },
+  handler: async (ctx, { workspaceId, jobId }) => {
+    const row = await ctx.db
+      .query("treasuryJobs")
+      .withIndex("by_job", (q) => q.eq("workspaceId", workspaceId).eq("jobId", jobId))
+      .first();
+    return row?.data ?? null;
+  },
+});
+
+export const putJob = mutation({
+  args: { workspaceId: v.string(), jobId: v.string(), data: v.any(), ts: v.number() },
+  handler: async (ctx, { workspaceId, jobId, data, ts }) => {
+    const row = await ctx.db
+      .query("treasuryJobs")
+      .withIndex("by_job", (q) => q.eq("workspaceId", workspaceId).eq("jobId", jobId))
+      .first();
+    if (row) await ctx.db.patch(row._id, { data, ts });
+    else await ctx.db.insert("treasuryJobs", { workspaceId, jobId, data, ts });
+  },
+});
+
 export const clearWorkspace = mutation({
   args: { workspaceId: v.string() },
   handler: async (ctx, { workspaceId }) => {
@@ -100,6 +159,12 @@ export const clearWorkspace = mutation({
       .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
       .collect();
     for (const r of ledger) await ctx.db.delete(r._id);
+
+    const jobs = await ctx.db
+      .query("treasuryJobs")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+      .collect();
+    for (const r of jobs) await ctx.db.delete(r._id);
 
     const budget = await ctx.db
       .query("treasuryBudgets")

@@ -1,0 +1,64 @@
+---
+title: "Run an agent turn"
+description: "POST /api/hermesco/agent"
+---
+
+```http
+POST /api/hermesco/agent
+```
+
+Runs one turn of the agent. Hermes 4 405B reasons over the message and history, drives tools through `<tool_call>`, and the server loops until the task is done or a spend is awaiting approval.
+
+## Request body
+
+<ParamField body="message" type="string" required>
+  The directive for the agent.
+</ParamField>
+
+<ParamField body="workspaceId" type="string" default="demo">
+  The workspace to operate in. Isolates Treasury, proposals, and the agent body.
+</ParamField>
+
+<ParamField body="history" type="ChatMessage[]">
+  Prior conversation turns, each `{ role: "user" | "assistant", content: string }`. Lets Hermes keep context across directives.
+</ParamField>
+
+## Response
+
+Returns an `AgentTurnResult`.
+
+<ResponseField name="events" type="AgentEvent[]">
+  The ordered trace of the turn: thoughts, tool calls, tool results, proposals, awaiting-approval, and errors.
+</ResponseField>
+
+<ResponseField name="assistant" type="string">
+  Hermes's final message to the operator.
+</ResponseField>
+
+<ResponseField name="awaitingApproval" type="boolean">
+  True when a spend is held for a human decision.
+</ResponseField>
+
+<ResponseField name="state" type="TreasuryState">
+  The live Treasury state after the turn.
+</ResponseField>
+
+## Example
+
+```bash
+curl -s https://hermesco.ai/api/hermesco/agent \
+  -H "content-type: application/json" \
+  -d '{
+    "workspaceId": "g_demo",
+    "message": "Propose a $120/mo GPU server. Route it through the Treasury first."
+  }' | jq
+```
+
+A $120 spend is over the $50 per-action cap, so the response will show a `propose_spend` tool call, a blocked safety verdict, and a Treasury state with the balance unchanged at $0.
+
+## Errors
+
+| Status | Condition |
+| --- | --- |
+| `400` | `message` is missing, or the body is not valid JSON. |
+| `500` | An unexpected error during the turn (the message is returned in `error`). |
