@@ -1,0 +1,32 @@
+/* HermesCo docs — light brand polish layered on the Mintlify theme.
+   Theme, colors, fonts, and the dark default are set in docs.json;
+   this file only adds touches that are safe across Mintlify versions. */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --hermes-gold: #e0a35a;
+  --hermes-gold-deep: #c8893e;
+  --hermes-teal: #5bd6c0;
+  --hermes-cream: #ede6d9;
+}
+
+/* Code reads in the same monospace as the product UI. */
+code,
+pre,
+kbd {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-feature-settings: 'liga' 0, 'calt' 0;
+}
+
+/* Serif display headings sit a hair tighter, like the landing page. */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.005em;
+}
+
+/* Inline code gets a warm gold edge instead of a flat grey box. */
+:not(pre) > code {
+  border: 1px solid rgba(224, 163, 90, 0.3);
+}
