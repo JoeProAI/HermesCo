@@ -36,9 +36,16 @@ h3 {
   border-color: rgba(224, 163, 90, 0.35) !important;
   background-color: rgba(224, 163, 90, 0.08) !important;
 }
-.callout[data-callout-type="note"] [data-component-part="callout-icon"] svg {
+/* Icon + text track the active theme so the callout stays readable in both. */
+html.dark .callout[data-callout-type="note"] [data-component-part="callout-icon"] svg {
   color: var(--hermes-gold) !important;
 }
-.callout[data-callout-type="note"] [data-component-part="callout-content"] {
+html:not(.dark) .callout[data-callout-type="note"] [data-component-part="callout-icon"] svg {
+  color: var(--hermes-gold-deep) !important;
+}
+html.dark .callout[data-callout-type="note"] [data-component-part="callout-content"] {
   color: var(--hermes-cream) !important;
+}
+html:not(.dark) .callout[data-callout-type="note"] [data-component-part="callout-content"] {
+  color: #5b3d18 !important;
 }
