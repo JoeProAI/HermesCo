@@ -110,6 +110,41 @@ export const recordDepositOnce = mutation({
   },
 });
 
+export const listJobs = query({
+  args: { workspaceId: v.string() },
+  handler: async (ctx, { workspaceId }) => {
+    const rows = await ctx.db
+      .query("treasuryJobs")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+      .order("asc")
+      .collect();
+    return rows.map((r) => r.data);
+  },
+});
+
+export const getJob = query({
+  args: { workspaceId: v.string(), jobId: v.string() },
+  handler: async (ctx, { workspaceId, jobId }) => {
+    const row = await ctx.db
+      .query("treasuryJobs")
+      .withIndex("by_job", (q) => q.eq("workspaceId", workspaceId).eq("jobId", jobId))
+      .first();
+    return row?.data ?? null;
+  },
+});
+
+export const putJob = mutation({
+  args: { workspaceId: v.string(), jobId: v.string(), data: v.any(), ts: v.number() },
+  handler: async (ctx, { workspaceId, jobId, data, ts }) => {
+    const row = await ctx.db
+      .query("treasuryJobs")
+      .withIndex("by_job", (q) => q.eq("workspaceId", workspaceId).eq("jobId", jobId))
+      .first();
+    if (row) await ctx.db.patch(row._id, { data, ts });
+    else await ctx.db.insert("treasuryJobs", { workspaceId, jobId, data, ts });
+  },
+});
+
 export const clearWorkspace = mutation({
   args: { workspaceId: v.string() },
   handler: async (ctx, { workspaceId }) => {
@@ -124,6 +159,12 @@ export const clearWorkspace = mutation({
       .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
       .collect();
     for (const r of ledger) await ctx.db.delete(r._id);
+
+    const jobs = await ctx.db
+      .query("treasuryJobs")
+      .withIndex("by_workspace", (q) => q.eq("workspaceId", workspaceId))
+      .collect();
+    for (const r of jobs) await ctx.db.delete(r._id);
 
     const budget = await ctx.db
       .query("treasuryBudgets")

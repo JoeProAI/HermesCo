@@ -5,6 +5,8 @@ import Link from "next/link";
 import type {
   AgentEvent,
   AgentTurnResult,
+  Job,
+  JobStatus,
   Proposal,
   TreasuryState,
 } from "@/lib/hermesco/types";
@@ -50,10 +52,22 @@ interface FleetData {
 // Real business directives, not demo scripts. Each one exercises the full
 // pipeline: Hermes decides, Nemotron screens, Stripe settles, on a Fly machine.
 const PRESETS = [
-  "Stand up a $20 logo-design service with a real Stripe payment link, then provision the tooling you need on your machine to deliver the first order.",
-  "A client needs a market-research report. Check the Treasury, then propose the API spend required to source the data.",
+  "A customer needs the headings and links from https://news.ycombinator.com as clean JSON. Quote a Web Extract job, then deliver it once they pay.",
+  "Quote a Repo Pack job for https://github.com/sindresorhus/slugify so a customer can size up the codebase, then fulfil it after the payment lands.",
   "Propose a $120 per month CoreWeave GPU server to expand capacity. Route it through the Treasury for a decision before any money moves.",
 ];
+
+// The service catalog shape returned by GET /api/hermesco/jobs (mirrors
+// serviceCatalog() in services.ts). Kept local so this client bundle does not
+// pull in the node-only service implementations.
+interface ServiceCatalogItem {
+  key: string;
+  name: string;
+  tagline: string;
+  deliverable: string;
+  brief: string;
+  suggested_price_usd: number;
+}
 
 const money = (n: number) =>
   `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -112,6 +126,11 @@ export default function CommandCenter() {
   const [provisioning, setProvisioning] = useState(false);
   const [machineBusy, setMachineBusy] = useState<Record<string, string>>({});
 
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [services, setServices] = useState<ServiceCatalogItem[]>([]);
+  const [jobBusy, setJobBusy] = useState<string | null>(null);
+  const [jobMsg, setJobMsg] = useState<string | null>(null);
+
   const logRef = useRef<HTMLDivElement>(null);
   const depositHandled = useRef(false);
 
@@ -139,6 +158,25 @@ export default function CommandCenter() {
     }
   }, []);
 
+  const refreshJobs = useCallback(async () => {
+    if (!workspaceId || workspaceId === "g_server") return;
+    try {
+      const res = await fetch(
+        `/api/hermesco/jobs?workspaceId=${encodeURIComponent(workspaceId)}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        jobs?: Job[];
+        services?: ServiceCatalogItem[];
+      };
+      if (Array.isArray(data.jobs)) setJobs(data.jobs);
+      if (Array.isArray(data.services)) setServices(data.services);
+    } catch {
+      // non-fatal: the order book just stays as-is until the next refresh
+    }
+  }, [workspaceId]);
+
   useEffect(() => {
     if (typeof window !== "undefined" && window.localStorage.getItem("hermesco-entered")) {
       setEntered(true);
@@ -150,8 +188,10 @@ export default function CommandCenter() {
     setState(null);
     setLog([]);
     setHistory([]);
+    setJobs([]);
     void refresh();
-  }, [identity.ready, workspaceId, refresh]);
+    void refreshJobs();
+  }, [identity.ready, workspaceId, refresh, refreshJobs]);
 
   // Live fleet polling: surface real Fly machines as they boot, suspend, or wake.
   useEffect(() => {
@@ -230,6 +270,7 @@ export default function CommandCenter() {
     } finally {
       setBusy(false);
       void refreshFleet();
+      void refreshJobs();
     }
   }
 
@@ -247,6 +288,63 @@ export default function CommandCenter() {
       }
     } finally {
       setDeciding(null);
+      void refreshJobs();
+    }
+  }
+
+  // Quote a real customer job: stand up a Stripe payment link and add it to the
+  // order book. Nothing is earned until the customer pays the link.
+  async function quoteJob(input: { service: string; brief: string; priceUsd: number }) {
+    setJobBusy("quote");
+    setJobMsg(null);
+    try {
+      const res = await fetch("/api/hermesco/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId, action: "quote", ...input }),
+      });
+      const data = (await res.json()) as { job?: Job; state?: TreasuryState; error?: string };
+      if (data.error) setJobMsg(data.error);
+      else {
+        if (data.state) setState(data.state);
+        setJobMsg("Job quoted. Share the payment link with the customer, then deliver once paid.");
+      }
+    } catch (err) {
+      setJobMsg(`Network error: ${String(err)}`);
+    } finally {
+      setJobBusy(null);
+      void refreshJobs();
+    }
+  }
+
+  // Fulfil a paid job: verify the Stripe payment, book the screened compute
+  // spend, run the real work on the Fly machine, return the deliverable.
+  async function deliverJob(jobId: string) {
+    setJobBusy(jobId);
+    setJobMsg(null);
+    try {
+      const res = await fetch("/api/hermesco/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId, action: "deliver", jobId }),
+      });
+      const data = (await res.json()) as {
+        outcome?: string;
+        message?: string;
+        state?: TreasuryState;
+        error?: string;
+      };
+      if (data.error) setJobMsg(data.error);
+      else {
+        if (data.state) setState(data.state);
+        if (data.message) setJobMsg(data.message);
+      }
+    } catch (err) {
+      setJobMsg(`Network error: ${String(err)}`);
+    } finally {
+      setJobBusy(null);
+      void refreshFleet();
+      void refreshJobs();
     }
   }
 
@@ -284,8 +382,11 @@ export default function CommandCenter() {
       if (res.ok) setState((await res.json()) as TreasuryState);
       setLog([]);
       setHistory([]);
+      setJobs([]);
+      setJobMsg(null);
     } finally {
       setBusy(false);
+      void refreshJobs();
     }
   }
 
@@ -610,6 +711,18 @@ export default function CommandCenter() {
             padding: "20px clamp(16px, 2vw, 24px)",
           }}
         >
+          <JobDeskPanel
+            jobs={jobs}
+            services={services}
+            stripeMode={state?.stripeMode ?? "none"}
+            jobBusy={jobBusy}
+            jobMsg={jobMsg}
+            onQuote={quoteJob}
+            onDeliver={deliverJob}
+          />
+
+          <div style={{ height: 24 }} />
+
           <TreasuryPanel
             state={state}
             pending={pending}
@@ -622,6 +735,409 @@ export default function CommandCenter() {
         </aside>
       </div>
     </main>
+  );
+}
+
+function jobStatusMeta(status: JobStatus): { label: string; color: string } {
+  switch (status) {
+    case "quoted":
+      return { label: "QUOTED", color: WARN };
+    case "paid":
+      return { label: "PAID", color: BLUE };
+    case "delivering":
+      return { label: "DELIVERING", color: TEAL };
+    case "delivered":
+      return { label: "DELIVERED", color: SUCCESS };
+    case "failed":
+      return { label: "FAILED", color: DANGER };
+    default:
+      return { label: String(status).toUpperCase(), color: "rgba(237,230,217,0.6)" };
+  }
+}
+
+function JobDeskPanel({
+  jobs,
+  services,
+  stripeMode,
+  jobBusy,
+  jobMsg,
+  onQuote,
+  onDeliver,
+}: {
+  jobs: Job[];
+  services: ServiceCatalogItem[];
+  stripeMode: "none" | "test" | "live";
+  jobBusy: string | null;
+  jobMsg: string | null;
+  onQuote: (input: { service: string; brief: string; priceUsd: number }) => void;
+  onDeliver: (jobId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [service, setService] = useState("");
+  const [brief, setBrief] = useState("");
+  const [price, setPrice] = useState("");
+
+  const canQuote = stripeMode !== "none";
+  const quoting = jobBusy === "quote";
+
+  // Effective selection falls back to the first service until the operator picks
+  // one, derived in render so we never write state in an effect.
+  const effectiveService = service || services[0]?.key || "";
+  const selected = services.find((s) => s.key === effectiveService) ?? null;
+  const effectivePrice =
+    price !== "" ? price : selected ? String(selected.suggested_price_usd) : "";
+
+  function pickService(key: string) {
+    setService(key);
+    const svc = services.find((s) => s.key === key);
+    setPrice(svc ? String(svc.suggested_price_usd) : "");
+  }
+
+  function submit() {
+    const priceUsd = Number(effectivePrice) || (selected?.suggested_price_usd ?? 0);
+    if (!effectiveService || !brief.trim() || priceUsd <= 0) return;
+    onQuote({ service: effectiveService, brief: brief.trim(), priceUsd });
+    setBrief("");
+    setOpen(false);
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 400, fontSize: 20, margin: 0 }}>
+          Job Desk
+        </h3>
+        <button
+          className="hc-press"
+          onClick={() => setOpen((v) => !v)}
+          disabled={!canQuote}
+          title={canQuote ? "" : "Connect Stripe to quote real jobs."}
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            fontWeight: 700,
+            color: canQuote ? INK : "rgba(237,230,217,0.4)",
+            background: canQuote ? `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})` : "rgba(237,230,217,0.12)",
+            border: "none",
+            borderRadius: 8,
+            padding: "7px 13px",
+            cursor: canQuote ? "pointer" : "default",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {open ? "Close" : "New order"}
+        </button>
+      </div>
+
+      <p
+        style={{
+          margin: 0,
+          fontFamily: "var(--font-body)",
+          fontSize: 12.5,
+          lineHeight: 1.55,
+          color: "rgba(237,230,217,0.55)",
+        }}
+      >
+        HermesCo sells real units of compute work. Quote a job, the customer pays the Stripe link,
+        then Hermes runs it on a Fly machine and returns the deliverable. Profit = price minus
+        compute.
+      </p>
+
+      {open && (
+        <div
+          style={{
+            border: "1px solid rgba(224,163,90,0.3)",
+            borderRadius: 12,
+            padding: "14px 14px",
+            background: "rgba(224,163,90,0.05)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 11,
+          }}
+        >
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.1em", color: "rgba(237,230,217,0.5)" }}>
+              SERVICE
+            </span>
+            <select
+              value={effectiveService}
+              onChange={(e) => pickService(e.target.value)}
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 13,
+                color: CREAM,
+                background: INK,
+                border: "1px solid rgba(237,230,217,0.18)",
+                borderRadius: 8,
+                padding: "9px 10px",
+              }}
+            >
+              {services.length === 0 && <option value="">Loading services.</option>}
+              {services.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.name} (from {money(s.suggested_price_usd)})
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {selected && (
+            <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "rgba(237,230,217,0.55)", lineHeight: 1.5 }}>
+              {selected.tagline}
+              <div style={{ marginTop: 4, color: "rgba(237,230,217,0.4)" }}>
+                Returns: {selected.deliverable}
+              </div>
+            </div>
+          )}
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.1em", color: "rgba(237,230,217,0.5)" }}>
+              {selected ? selected.brief.toUpperCase() : "BRIEF"}
+            </span>
+            <textarea
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              rows={2}
+              placeholder="The customer's task: a URL, a Git repo, or a command."
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 13,
+                color: CREAM,
+                background: INK,
+                border: "1px solid rgba(237,230,217,0.18)",
+                borderRadius: 8,
+                padding: "9px 10px",
+                resize: "vertical",
+              }}
+            />
+          </label>
+
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 5, width: 110 }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.1em", color: "rgba(237,230,217,0.5)" }}>
+                PRICE USD
+              </span>
+              <input
+                type="number"
+                min={1}
+                value={effectivePrice}
+                onChange={(e) => setPrice(e.target.value)}
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 13,
+                  color: CREAM,
+                  background: INK,
+                  border: "1px solid rgba(237,230,217,0.18)",
+                  borderRadius: 8,
+                  padding: "9px 10px",
+                }}
+              />
+            </label>
+            <button
+              className="hc-press"
+              onClick={submit}
+              disabled={quoting || !brief.trim() || !effectiveService}
+              style={{
+                flex: 1,
+                fontFamily: "var(--font-mono)",
+                fontSize: 13,
+                fontWeight: 700,
+                color: quoting || !brief.trim() ? "rgba(237,230,217,0.4)" : INK,
+                background: quoting || !brief.trim() ? "rgba(237,230,217,0.12)" : `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`,
+                border: "none",
+                borderRadius: 8,
+                padding: "10px 0",
+                cursor: quoting || !brief.trim() ? "default" : "pointer",
+              }}
+            >
+              {quoting ? "Quoting." : "Quote job"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {jobMsg && (
+        <div
+          style={{
+            border: "1px solid rgba(110,151,255,0.3)",
+            borderRadius: 10,
+            padding: "10px 12px",
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            color: "rgba(237,230,217,0.8)",
+            lineHeight: 1.5,
+            background: "rgba(110,151,255,0.05)",
+          }}
+        >
+          {jobMsg}
+        </div>
+      )}
+
+      {jobs.length === 0 ? (
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 12,
+            color: "rgba(237,230,217,0.4)",
+            lineHeight: 1.6,
+            border: "1px dashed rgba(237,230,217,0.14)",
+            borderRadius: 10,
+            padding: "14px 14px",
+          }}
+        >
+          No jobs on the order book yet.{" "}
+          {canQuote ? 'Click "New order" to quote one, or give Hermes a directive.' : "Connect Stripe to start quoting jobs."}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {jobs.map((j) => (
+            <JobCard key={j.id} job={j} busy={jobBusy === j.id} onDeliver={onDeliver} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function JobCard({
+  job,
+  busy,
+  onDeliver,
+}: {
+  job: Job;
+  busy: boolean;
+  onDeliver: (jobId: string) => void;
+}) {
+  const [showDeliverable, setShowDeliverable] = useState(false);
+  const meta = jobStatusMeta(job.status);
+  const net =
+    job.status === "delivered" ? job.priceUsd - (job.computeCostUsd ?? 0) : null;
+
+  return (
+    <div
+      style={{
+        border: `1px solid ${meta.color}33`,
+        borderRadius: 12,
+        padding: "13px 14px",
+        background: "linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0))",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: CREAM }}>
+          {job.serviceName}
+        </span>
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            letterSpacing: "0.06em",
+            color: meta.color,
+            border: `1px solid ${meta.color}55`,
+            borderRadius: 999,
+            padding: "2px 8px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {meta.label}
+        </span>
+      </div>
+
+      <div
+        style={{
+          marginTop: 6,
+          fontFamily: "var(--font-mono)",
+          fontSize: 11.5,
+          color: "rgba(237,230,217,0.6)",
+          lineHeight: 1.5,
+          wordBreak: "break-word",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
+        title={job.brief}
+      >
+        {job.brief}
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 9 }}>
+        <Vital label="PRICE" value={money(job.priceUsd)} />
+        {job.computeCostUsd != null && <Vital label="COMPUTE" value={money(job.computeCostUsd)} />}
+        {net != null && <Vital label="NET PROFIT" value={money(net)} />}
+        {job.customer && <Vital label="CUSTOMER" value={job.customer} />}
+        {job.machineId && <Vital label="MACHINE" value={job.machineId} />}
+      </div>
+
+      {job.error && (
+        <div style={{ marginTop: 8, fontFamily: "var(--font-mono)", fontSize: 11, color: DANGER, lineHeight: 1.5 }}>
+          {job.error}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
+        {(job.status === "quoted" || job.status === "paid") && (
+          <a
+            className="hc-press"
+            href={job.paymentLinkUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              flex: 1,
+              textAlign: "center",
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              color: TEAL,
+              background: "transparent",
+              border: `1px solid ${TEAL}55`,
+              borderRadius: 7,
+              padding: "7px 0",
+              textDecoration: "none",
+            }}
+          >
+            Pay link
+          </a>
+        )}
+        {job.status !== "delivered" && (
+          <CardBtn
+            label={busy ? "Working." : job.status === "quoted" ? "Deliver" : "Retry deliver"}
+            onClick={() => onDeliver(job.id)}
+            disabled={busy}
+            color={GOLD}
+          />
+        )}
+        {job.deliverable && (
+          <CardBtn
+            label={showDeliverable ? "Hide" : "View output"}
+            onClick={() => setShowDeliverable((v) => !v)}
+            disabled={false}
+            color={BLUE}
+          />
+        )}
+      </div>
+
+      {showDeliverable && job.deliverable && (
+        <pre
+          style={{
+            marginTop: 10,
+            marginBottom: 0,
+            maxHeight: 220,
+            overflow: "auto",
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            lineHeight: 1.5,
+            color: "rgba(237,230,217,0.85)",
+            background: INK,
+            border: "1px solid rgba(237,230,217,0.12)",
+            borderRadius: 8,
+            padding: "10px 12px",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {job.deliverable}
+        </pre>
+      )}
+    </div>
   );
 }
 

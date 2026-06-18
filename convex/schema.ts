@@ -75,4 +75,15 @@ export default defineSchema({
     data: v.any(),
     ts: v.number(),
   }).index("by_workspace", ["workspaceId"]),
+
+  // HermesCo Job Desk - the order book of real work the agent sells. The full
+  // Job shape lives in src/lib/hermesco/types.ts; stored opaquely here.
+  treasuryJobs: defineTable({
+    workspaceId: v.string(),
+    jobId: v.string(),
+    data: v.any(),
+    ts: v.number(),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_job", ["workspaceId", "jobId"]),
 });

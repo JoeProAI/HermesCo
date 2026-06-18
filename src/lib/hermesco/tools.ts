@@ -2,9 +2,10 @@
 // so the agent can act autonomously while a human stays in control of the cash.
 
 import type { Proposal } from "./types";
-import { collectOfferRevenue, createSpend, getState } from "./treasury";
-import { createOffer } from "./stripe-skills";
+import { createSpend, getState } from "./treasury";
 import { runForAgent } from "./sandbox";
+import { fulfillJob, quoteJob } from "./jobs";
+import { serviceCatalog } from "./services";
 
 export interface ToolSpec {
   name: string;
@@ -19,15 +20,26 @@ export const TOOL_SPECS: ToolSpec[] = [
     parameters: {},
   },
   {
-    name: "create_offer",
-    description: "Stand up a sellable offer: a Stripe product + price + shareable payment link. Use this to start earning.",
-    parameters: { product_name: "string", price_usd: "number" },
+    name: "list_services",
+    description:
+      "List the real services HermesCo can sell. Each one runs a concrete job on your Fly machine and returns a usable deliverable. Read this to pick the right service for the customer's task.",
+    parameters: {},
   },
   {
-    name: "collect_payment",
+    name: "quote_job",
     description:
-      "Reconcile the REAL revenue a customer has actually paid on an offer's Stripe payment link. Pass the payment_link_id returned by create_offer. Credits only money Stripe confirms was collected. Nothing is recorded until a real customer pays the link.",
-    parameters: { payment_link_id: "string (the id returned by create_offer)" },
+      "Quote a real customer job. Pick a `service` (from list_services), pass the customer's `brief` (a URL, a Git repo, or a task to run), and a `price_usd`. This stands up a real Stripe payment link and records the job as quoted. Share the link with the customer; nothing is earned until they pay it.",
+    parameters: {
+      service: "string (service key from list_services, e.g. web-extract)",
+      brief: "string (the customer's task: a URL, a repo, or a command)",
+      price_usd: "number (what to charge the customer)",
+    },
+  },
+  {
+    name: "deliver_job",
+    description:
+      "Fulfil a quoted job once the customer has paid. Pass the `job_id` from quote_job. This verifies the real Stripe payment, credits the revenue, books the compute spend through the Treasury (NemoClaw screens it, hard caps hold), runs the real job on your Fly machine, and returns the deliverable. If the compute spend needs human approval it will say so; approve it in the Treasury, then call deliver_job again.",
+    parameters: { job_id: "string (the id returned by quote_job)" },
   },
   {
     name: "propose_spend",
@@ -82,20 +94,27 @@ export async function executeTool(
       };
     }
 
-    case "create_offer": {
-      const productName = str(args.product_name, "HermesCo Service");
+    case "list_services": {
+      return { observation: JSON.stringify({ ok: true, services: serviceCatalog() }) };
+    }
+
+    case "quote_job": {
+      const service = str(args.service, "");
+      const brief = str(args.brief, "");
       const price = num(args.price_usd, 0);
       try {
-        const offer = await createOffer(productName, price);
+        const job = await quoteJob(workspaceId, { service, brief, priceUsd: price });
         return {
           observation: JSON.stringify({
             ok: true,
-            product: productName,
-            price_usd: price,
-            payment_link: offer.paymentLinkUrl,
-            payment_link_id: offer.ref,
-            stripe: offer.kind,
-            next: "Share payment_link with the customer. Once they pay it, call collect_payment with this payment_link_id to credit the real revenue.",
+            job_id: job.id,
+            service: job.service,
+            service_name: job.serviceName,
+            brief: job.brief,
+            price_usd: job.priceUsd,
+            payment_link: job.paymentLinkUrl,
+            status: job.status,
+            next: "Share payment_link with the customer. Once they pay it, call deliver_job with this job_id to fulfil the work and book the revenue.",
           }),
         };
       } catch (err) {
@@ -104,30 +123,33 @@ export async function executeTool(
       }
     }
 
-    case "collect_payment": {
-      const paymentLinkId = str(args.payment_link_id, "");
-      if (!paymentLinkId.trim()) {
+    case "deliver_job": {
+      const jobId = str(args.job_id, "");
+      if (!jobId.trim()) {
         return {
           observation: JSON.stringify({
             ok: false,
-            error:
-              "Pass the payment_link_id from create_offer. Revenue is only real once a customer pays that link.",
+            error: "Pass the job_id from quote_job.",
           }),
         };
       }
       try {
-        const r = await collectOfferRevenue(workspaceId, paymentLinkId);
+        const r = await fulfillJob(workspaceId, jobId);
         return {
+          proposal: r.spend,
           observation: JSON.stringify({
-            ok: true,
-            new_revenue_usd: round(r.newRevenueUsd),
-            payments_credited: r.creditedCount,
-            new_balance_usd: round(r.state.balanceUsd),
-            net_profit_usd: round(r.state.netProfitUsd),
-            note:
-              r.creditedCount === 0
-                ? "No new paid payments on this link yet. Share the link with a customer; once they pay, call collect_payment again."
-                : "Real revenue credited from confirmed Stripe payments.",
+            ok: r.outcome === "delivered",
+            outcome: r.outcome,
+            job_id: r.job.id,
+            status: r.job.status,
+            customer: r.job.customer ?? null,
+            price_usd: r.job.priceUsd,
+            compute_cost_usd: r.job.computeCostUsd ?? null,
+            net_profit_usd:
+              r.job.computeCostUsd != null ? round(r.job.priceUsd - r.job.computeCostUsd) : null,
+            machine_id: r.job.machineId ?? null,
+            deliverable: r.job.deliverable ?? null,
+            message: r.message,
           }),
         };
       } catch (err) {
