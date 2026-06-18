@@ -1,0 +1,43 @@
+---
+title: "The Job Desk"
+description: "HermesCo sells real units of compute work. A customer brings a brief, pays a Stripe link, and the agent runs the job on its own machine and returns the deliverable."
+---
+
+## What HermesCo sells
+
+The Job Desk is the actual business. A customer (a person, or another agent) brings a brief; Hermes quotes it as a real Stripe payment link; the customer pays; Hermes spends real compute (screened by NemoClaw, held to the Treasury hard caps) to run the job on a Fly machine, returns the real deliverable, and books profit = price minus compute cost. The implementation is `src/lib/hermesco/jobs.ts` and the catalog is `src/lib/hermesco/services.ts`.
+
+Nothing is templated: the customer's brief is executed as a concrete command on the agent's own machine and the actual output is returned.
+
+## The service catalog
+
+| Service | Brief | Deliverable | Suggested price |
+| --- | --- | --- | --- |
+| **Web Extract** | A public page URL | `deliverable.json`: title, headings, links, and word count | $25 |
+| **Repo Pack** | A public Git repo URL | `deliverable.json`: file count, languages by extension, total lines, largest files | $35 |
+| **Managed Run** | A shell or Python task | `deliverable.txt`: exit code and full stdout/stderr | $20 |
+
+Each service is a real bash command that runs on the agent's Fly Machine (Python 3.12, Node 22, git, bash). The brief is passed in base64-encoded and decoded inside the shell, so it can contain any characters without breaking the command.
+
+## Lifecycle of a job
+
+```
+quoteJob()    -> real Stripe payment link created, job recorded as "quoted"
+                 (no money has moved)
+fulfillJob()  -> 1. confirm the customer paid the link, credit ONLY that revenue   -> "paid"
+                 2. book the compute as a Treasury spend (NemoClaw + hard caps)
+                 3. run the real job on the Fly machine                            -> "delivering"
+                 4. return the deliverable, book profit                            -> "delivered"
+```
+
+`fulfillJob` is idempotent and safe to call repeatedly. If the compute spend needs human approval, the job waits at `paid` until the spend is approved, then delivering resumes. If the run exits non-zero, the job is marked `failed` and can be retried.
+
+## Profit is real, and bounded
+
+The compute cost is booked as a genuine Treasury spend against Fly.io before the job runs, so every job's provisioning passes the same safety screen and hard caps as any other spend. Profit on a delivered job is simply:
+
+```ts
+netProfitUsd = priceUsd - computeCostUsd
+```
+
+Because the compute spend goes through the Treasury, a job can never push the business below its minimum reserve, and the agent can never deliver work it has not been paid for.

@@ -394,7 +394,7 @@ export default function Landing() {
             tag="01 · EARN"
             accent={GOLD}
             title="It makes money"
-            body="Hermes stands up a real offer (a Stripe product, price, and payment link) and collects customer payments for delivered work. Revenue lands on a live ledger."
+            body="A customer brings a real task. Hermes quotes it with a Stripe payment link, runs the job on its own machine once paid, and returns the deliverable. Revenue lands on a live ledger."
           />
           <Pillar
             index={1}
@@ -408,7 +408,7 @@ export default function Landing() {
             tag="03 · SCALE · SAFE"
             accent="#8FB7F0"
             title="At any scale"
-            body="Each agent runs on its own isolated Fly machine with a Daytona sandbox for real work, screened by an NVIDIA Nemotron safety pass. A fleet of bounded, autonomous operators."
+            body="Each agent runs on its own isolated Fly machine (a Daytona sandbox is the fallback), and every spend is screened by an NVIDIA Nemotron pass. A fleet of bounded, autonomous operators."
           />
         </div>
       </section>
@@ -558,12 +558,20 @@ export default function Landing() {
             fontSize: 12,
             color: "rgba(237,230,217,0.5)",
             textAlign: "right",
-            lineHeight: 1.8,
+            lineHeight: 1.9,
           }}
         >
-          Hermes by Nous Research · Nemotron by NVIDIA · Payments by Stripe
+          Hermes 4 by Nous Research · Nemotron by NVIDIA · Payments by Stripe
           <br />
-          Engine: Cognition AI · Devin
+          Compute by Fly.io · Persistence by Convex · Sandbox by Daytona
+          <br />
+          <a
+            href="https://docs.hermesco.ai/credits"
+            style={{ color: "rgba(237,230,217,0.5)", textDecoration: "underline" }}
+          >
+            Full credits
+          </a>{" "}
+          · Built with Cognition Devin
         </div>
       </footer>
     </main>

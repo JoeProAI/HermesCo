@@ -21,6 +21,7 @@
           {
             "group": "Concepts",
             "pages": [
+              "concepts/jobs",
               "concepts/pipeline",
               "concepts/fly-machines",
               "concepts/treasury",
@@ -32,6 +33,10 @@
           {
             "group": "Operations",
             "pages": ["deployment", "configuration"]
+          },
+          {
+            "group": "About",
+            "pages": ["credits"]
           }
         ]
       },
@@ -61,7 +66,7 @@
   },
   "footer": {
     "socials": {
-      "website": "https://hermesco.fly.dev"
+      "website": "https://hermesco.ai"
     }
   }
 }

@@ -2017,12 +2017,20 @@ function TreasuryPanel({
           color: "rgba(237,230,217,0.35)",
           textAlign: "center",
           marginTop: 4,
-          lineHeight: 1.7,
+          lineHeight: 1.8,
         }}
       >
-        NemoClaw safety screening · NVIDIA Nemotron
+        Hermes 4 · Nous Research &nbsp;·&nbsp; Nemotron · NVIDIA &nbsp;·&nbsp; Payments · Stripe
         <br />
-        Engine: Cognition AI · Devin
+        Compute · Fly.io &nbsp;·&nbsp; Persistence · Convex &nbsp;·&nbsp; Sandbox · Daytona
+        <br />
+        <a
+          href="https://docs.hermesco.ai/credits"
+          style={{ color: "rgba(237,230,217,0.4)", textDecoration: "underline" }}
+        >
+          Full credits
+        </a>{" "}
+        · Built with Cognition Devin
       </div>
     </div>
   );

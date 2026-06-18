@@ -49,13 +49,15 @@ A verdict has three levels:
 
 ## Nemotron classification
 
-When the deterministic layer does not already block, Nemotron classifies the spend through the OpenRouter chat client:
+When the deterministic layer does not already block, NVIDIA Nemotron classifies the spend. The screen calls NVIDIA's own API (`integrate.api.nvidia.com`) when an `NVIDIA_API_KEY` is configured, and otherwise reaches the same Nemotron model (`nvidia/nemotron-3-ultra-550b-a55b`) through OpenRouter:
 
 ```ts
-classifyWithNemotron({ ... })  ->  chatComplete(SAFETY_MODEL_ID, ...)
+classifyWithNemotron({ ... })  ->  chatComplete({ provider, modelId: SAFETY_MODEL_ID, ... })
 ```
 
-If the model is unavailable, the function returns null and the deterministic layers stand. The safety outcome is therefore never blocked on model availability.
+Nemotron is a reasoning model, so the prompt opens with `/no_think` and a wider token budget so it returns the verdict JSON directly instead of spending the budget reasoning out loud.
+
+If the model is unavailable or times out, the function returns null and the deterministic layers stand. The safety outcome is therefore never blocked on model availability.
 
 ## What the agent sees
 

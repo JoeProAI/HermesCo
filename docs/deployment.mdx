@@ -12,7 +12,7 @@ HermesCo runs as two Fly apps:
 | `hermesco` | The Next.js web app: Command Center, agent loop, Treasury, APIs |
 | `hermesco-agents` | The dedicated app that holds per-agent Fly Machines (agent bodies) |
 
-The web app is live at `https://hermesco.fly.dev`. Agent bodies are provisioned into `hermesco-agents` on demand and do not need public IPs because all execution happens through the Machines API.
+The web app is live at `https://hermesco.ai`. Agent bodies are provisioned into `hermesco-agents` on demand and do not need public IPs because all execution happens through the Machines API.
 
 ## Deploy
 
@@ -50,8 +50,8 @@ Test mode is recommended for evaluation because anyone can run the full money lo
 ## Verifying a deployment
 
 ```bash
-curl -s https://hermesco.fly.dev/api/hermesco/agents | jq        # fleet + configured flag
-curl -s "https://hermesco.fly.dev/api/hermesco/treasury?workspaceId=probe" | jq
+curl -s https://hermesco.ai/api/hermesco/agents | jq        # fleet + configured flag
+curl -s "https://hermesco.ai/api/hermesco/treasury?workspaceId=probe" | jq
 ```
 
 A healthy deployment returns `configured: true` from the agents endpoint when `FLY_API_TOKEN` is set, and a Treasury state with `stripeMode` reflecting the key in use.

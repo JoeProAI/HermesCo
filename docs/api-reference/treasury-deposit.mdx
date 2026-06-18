@@ -24,7 +24,7 @@ Creates a real Stripe Checkout session for the amount and returns the URL to red
 The response is the Checkout session (including its `url`). The success URL returns to `/command?deposit_session={CHECKOUT_SESSION_ID}` and the cancel URL to `/command?deposit_cancelled=1`.
 
 ```bash
-curl -s https://hermesco.fly.dev/api/hermesco/treasury/deposit \
+curl -s https://hermesco.ai/api/hermesco/treasury/deposit \
   -H "content-type: application/json" \
   -d '{"workspaceId":"g_demo","amountUsd":100}' | jq
 ```

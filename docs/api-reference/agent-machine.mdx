@@ -16,7 +16,7 @@ Returns the live status and vitals of one agent machine.
 </ResponseField>
 
 ```bash
-curl -s https://hermesco.fly.dev/api/hermesco/agents/MACHINE_ID | jq
+curl -s https://hermesco.ai/api/hermesco/agents/MACHINE_ID | jq
 ```
 
 ## Act on the machine
@@ -45,11 +45,11 @@ For `exec`, the response is `{ ok, result }` where `result` is `{ exitCode, stdo
 
 ```bash
 # Suspend to $0
-curl -s https://hermesco.fly.dev/api/hermesco/agents/MACHINE_ID \
+curl -s https://hermesco.ai/api/hermesco/agents/MACHINE_ID \
   -H "content-type: application/json" -d '{"action":"suspend"}' | jq
 
 # Run a real command on the body
-curl -s https://hermesco.fly.dev/api/hermesco/agents/MACHINE_ID \
+curl -s https://hermesco.ai/api/hermesco/agents/MACHINE_ID \
   -H "content-type: application/json" \
   -d '{"action":"exec","command":"python3 -c \"print(2+2)\""}' | jq
 ```
@@ -63,7 +63,7 @@ DELETE /api/hermesco/agents/[id]
 Destroys the agent machine. Returns `{ ok: true }`.
 
 ```bash
-curl -s -X DELETE https://hermesco.fly.dev/api/hermesco/agents/MACHINE_ID | jq
+curl -s -X DELETE https://hermesco.ai/api/hermesco/agents/MACHINE_ID | jq
 ```
 
 ## Errors

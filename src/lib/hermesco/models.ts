@@ -36,6 +36,19 @@ export const NEMO_MODEL: ModelInfo = {
 export const SAFETY_MODEL_ID = NEMO_MODEL.id;
 
 const OR_BASE = "https://openrouter.ai/api/v1";
+// NVIDIA's own hosted API (NIM). When a key is present the NemoClaw screen calls
+// Nemotron directly on NVIDIA infrastructure; otherwise it reaches the same
+// model through OpenRouter. Either way the screen runs a real Nemotron model.
+const NVIDIA_BASE = "https://integrate.api.nvidia.com/v1";
+
+export function nvidiaConfigured(): boolean {
+  return !!process.env.NVIDIA_API_KEY;
+}
+
+// Where the safety screen actually ran, for honest UI/telemetry.
+export function safetyProvider(): "nvidia" | "openrouter" {
+  return nvidiaConfigured() ? "nvidia" : "openrouter";
+}
 
 export type ChatRole = "system" | "user" | "assistant";
 
@@ -65,21 +78,30 @@ export async function chatComplete(opts: {
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  provider?: "openrouter" | "nvidia";
 }): Promise<ChatResult> {
-  const key = process.env.OPENROUTER_API_KEY;
-  if (!key) throw new Error("OPENROUTER_API_KEY not set");
+  const provider = opts.provider ?? "openrouter";
+  const key =
+    provider === "nvidia" ? process.env.NVIDIA_API_KEY : process.env.OPENROUTER_API_KEY;
+  if (!key) {
+    throw new Error(`${provider === "nvidia" ? "NVIDIA_API_KEY" : "OPENROUTER_API_KEY"} not set`);
+  }
+  const base = provider === "nvidia" ? NVIDIA_BASE : OR_BASE;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${key}`,
+    "Content-Type": "application/json",
+  };
+  if (provider === "openrouter") {
+    headers["HTTP-Referer"] = "https://hermesco.ai";
+    headers["X-Title"] = "HermesCo";
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 45000);
   try {
-    const res = await fetch(`${OR_BASE}/chat/completions`, {
+    const res = await fetch(`${base}/chat/completions`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://hermesco.app",
-        "X-Title": "HermesCo",
-      },
+      headers,
       body: JSON.stringify({
         model: opts.modelId,
         messages: opts.messages,

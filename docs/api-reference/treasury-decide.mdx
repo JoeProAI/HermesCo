@@ -38,7 +38,7 @@ The human-in-the-loop decision. Approves or denies a pending spend proposal. An 
 </ResponseField>
 
 ```bash
-curl -s https://hermesco.fly.dev/api/hermesco/treasury/decide \
+curl -s https://hermesco.ai/api/hermesco/treasury/decide \
   -H "content-type: application/json" \
   -d '{"workspaceId":"g_demo","proposalId":"PROPOSAL_ID","decision":"approve","operator":"Joseph"}' | jq
 ```

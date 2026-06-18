@@ -41,7 +41,7 @@ HermesCo is a Next.js application (App Router) that hosts the agent loop, the Tr
     Every spend passes a deterministic policy gate and an NVIDIA Nemotron classification before it can execute.
   </Card>
   <Card title="Money rail" icon="credit-card" href="/concepts/treasury">
-    The Treasury holds real capital and records a signed ledger. Stripe Skills create offers, collect revenue, and run deposits.
+    The Treasury holds real capital and records a signed ledger. The agent's Stripe skills (server-side wrappers over the official Stripe API) create offers, collect revenue, and run deposits.
   </Card>
   <Card title="Agent body" icon="server" href="/concepts/fly-machines">
     Each agent is a dedicated Fly Machine. The agent execs real commands on it, and it suspends to $0 when idle.
@@ -67,7 +67,7 @@ Hermes 4 405B on OpenRouter does not expose native function calling, so HermesCo
 | --- | --- |
 | Agent loop | `src/lib/hermesco/agent.ts` |
 | Tools | `src/lib/hermesco/tools.ts` |
-| Models and OpenRouter client | `src/lib/hermesco/models.ts` |
+| Models and chat client (OpenRouter + NVIDIA) | `src/lib/hermesco/models.ts` |
 | Safety screen | `src/lib/hermesco/safety.ts` |
 | Treasury | `src/lib/hermesco/treasury.ts` |
 | Stripe Skills | `src/lib/hermesco/stripe-skills.ts` |

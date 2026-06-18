@@ -7,7 +7,7 @@
 //     human review. On any error it fails SAFE-by-deferring to layer 1, never
 //     blocking the happy path on a model outage.
 
-import { chatComplete, SAFETY_MODEL_ID } from "./models";
+import { chatComplete, safetyProvider, SAFETY_MODEL_ID } from "./models";
 import type { Budget, RiskLevel } from "./types";
 
 const PROHIBITED = [
@@ -61,16 +61,19 @@ export async function classifyWithNemotron(input: {
   details: string;
 }): Promise<SafetyVerdict | null> {
   try {
+    // Nemotron is a reasoning model. "/no_think" keeps it from spending its whole
+    // token budget thinking out loud, so it returns the verdict JSON directly.
     const { content } = await chatComplete({
+      provider: safetyProvider(),
       modelId: SAFETY_MODEL_ID,
       temperature: 0,
-      maxTokens: 160,
-      timeoutMs: 12000,
+      maxTokens: 700,
+      timeoutMs: 22000,
       messages: [
         {
           role: "system",
           content:
-            "You are NemoClaw, an NVIDIA Nemotron safety screen for an autonomous business agent. " +
+            "/no_think You are NemoClaw, an NVIDIA Nemotron safety screen for an autonomous business agent. " +
             "Classify the proposed action. Respond with ONLY compact JSON: " +
             '{"risk":"safe|review|blocked","reason":"<one short sentence>"}. ' +
             'Use "blocked" only for clearly illegal or abusive activity; "review" for anything ' +

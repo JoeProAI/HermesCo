@@ -24,7 +24,7 @@ Returns every real Fly agent machine HermesCo has spun up, plus the default spec
 </ResponseField>
 
 ```bash
-curl -s https://hermesco.fly.dev/api/hermesco/agents | jq
+curl -s https://hermesco.ai/api/hermesco/agents | jq
 ```
 
 ```json
@@ -71,7 +71,7 @@ Spins up a new dedicated, performance-class Fly machine as an agent body.
 </ResponseField>
 
 ```bash
-curl -s https://hermesco.fly.dev/api/hermesco/agents \
+curl -s https://hermesco.ai/api/hermesco/agents \
   -H "content-type: application/json" \
   -d '{"workspaceId":"g_demo","goal":"Deliver the first logo order"}' | jq
 ```
