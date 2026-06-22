@@ -292,6 +292,9 @@ if not rows:
     except:
         pass
 
+# Filter to only dict rows (primitives like [1,2,3] can't be column-analyzed)
+rows = [r for r in rows if isinstance(r, dict)]
+
 if not rows:
     emit({"error": "could_not_parse_data", "hint": "Provide a URL to a CSV/JSON file or paste data inline", "sample": raw_data[:500]})
     sys.exit(2)
