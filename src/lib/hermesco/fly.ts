@@ -268,10 +268,9 @@ export async function execOnMachine(
   });
   // Suspend after exec so the machine stops billing immediately.
   // Fire-and-forget — don't block the response on suspend completing.
-  suspendAgentMachine(id).catch(() => {
-    // If suspend fails (e.g. machine already stopping), try stop as fallback
-    stopAgentMachine(id).catch(() => undefined);
-  });
+  // Do NOT fall back to stop — with auto_destroy:true, stop would permanently
+  // destroy the machine (sleep infinity exits → Fly auto-destroys).
+  suspendAgentMachine(id).catch(() => undefined);
   return {
     exitCode: typeof res.exit_code === "number" ? res.exit_code : null,
     stdout: String(res.stdout ?? ""),

@@ -259,6 +259,10 @@ export default function CommandCenter() {
 
   async function send(message: string) {
     if (!message.trim() || busy) return;
+    if (identity.kind === "guest") {
+      setLog((l) => [...l, { who: "hermes", text: "Sign in with Google to chat with the agent." }]);
+      return;
+    }
     setBusy(true);
     setInput("");
     setLog((l) => [...l, { who: "you", text: message }]);
@@ -409,6 +413,10 @@ export default function CommandCenter() {
   // Pre-warm a real, dedicated Fly machine as this workspace's agent body.
   async function provisionBody() {
     if (provisioning) return;
+    if (identity.kind === "guest") {
+      setLog((l) => [...l, { who: "hermes", text: "Sign in with Google to provision an agent body." }]);
+      return;
+    }
     setProvisioning(true);
     try {
       let lastUser = "";
