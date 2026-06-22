@@ -7,6 +7,7 @@ import {
   startAgentMachine,
   suspendAgentMachine,
 } from "@/lib/hermesco/fly";
+import { verifyAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,8 +25,13 @@ function notConfigured() {
   );
 }
 
+function unauthorized() {
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+
 // GET - live status + vitals of one agent machine.
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  try { await verifyAuth(req); } catch { return unauthorized(); }
   if (!flyConfigured()) return notConfigured();
   const { id } = await ctx.params;
   try {
@@ -41,6 +47,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 // POST - act on the machine: suspend (to $0), start (warm resume), or exec
 // a real command on the agent's own body.
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  try { await verifyAuth(req); } catch { return unauthorized(); }
   if (!flyConfigured()) return notConfigured();
   const { id } = await ctx.params;
   let body: ActionBody;
@@ -75,7 +82,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 }
 
 // DELETE - destroy the agent machine (cleanup).
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  try { await verifyAuth(req); } catch { return unauthorized(); }
   if (!flyConfigured()) return notConfigured();
   const { id } = await ctx.params;
   try {
