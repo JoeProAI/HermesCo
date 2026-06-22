@@ -161,8 +161,8 @@ function shortId(): string {
 }
 
 // Spin up a real Fly machine as an agent body. The machine runs `sleep infinity`
-// so exec works, and auto-stops after 5 min idle (Fly proxy autostop=stop).
-// Cost: ~$5/mo per machine IF running 24/7; with autostop it's pennies.
+// so exec works. After each exec, we explicitly suspend it ($0 compute).
+// Cost: ~$5/mo per machine IF running 24/7; with suspend-after-exec it's pennies.
 export async function provisionAgentMachine(opts: {
   agentId?: string;
   label?: string;
