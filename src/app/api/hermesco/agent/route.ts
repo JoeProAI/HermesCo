@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runTurn } from "@/lib/hermesco/agent";
 import type { ChatMessage } from "@/lib/hermesco/models";
+import { verifyAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 interface AgentBody {
-  workspaceId?: string;
   message?: string;
   history?: ChatMessage[];
 }
 
 export async function POST(req: NextRequest) {
+  // Require Firebase auth — prevents random bots from burning OpenRouter credits
+  let decoded;
+  try {
+    decoded = await verifyAuth(req);
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body: AgentBody;
   try {
     body = (await req.json()) as AgentBody;
@@ -22,7 +30,8 @@ export async function POST(req: NextRequest) {
   const message = (body.message ?? "").trim();
   if (!message) return NextResponse.json({ error: "message is required" }, { status: 400 });
 
-  const workspaceId = body.workspaceId?.trim() || "demo";
+  // Workspace derived from authenticated user, not request body
+  const workspaceId = `u_${decoded.uid}`;
   try {
     const result = await runTurn({
       workspaceId,

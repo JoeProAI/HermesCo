@@ -106,6 +106,12 @@ export default function CommandCenter() {
   const identity = useIdentity();
   const workspaceId = identity.workspaceId;
 
+  // Helper: build auth headers for API calls (empty object for guests)
+  async function authHeaders(): Promise<Record<string, string>> {
+    const token = await identity.getToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   const [state, setState] = useState<TreasuryState | null>(null);
   const [input, setInput] = useState("");
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -145,7 +151,15 @@ export default function CommandCenter() {
 
   const refreshFleet = useCallback(async () => {
     try {
-      const res = await fetch("/api/hermesco/agents", { cache: "no-store" });
+      const hdrs = await authHeaders();
+      const res = await fetch("/api/hermesco/agents", {
+        cache: "no-store",
+        headers: hdrs,
+      });
+      if (res.status === 401) {
+        setFleet((f) => ({ ...f, error: "Sign in to view fleet" }));
+        return;
+      }
       const data = (await res.json()) as Partial<FleetData> & { error?: string };
       setFleet({
         configured: !!data.configured,
@@ -156,7 +170,8 @@ export default function CommandCenter() {
     } catch (err) {
       setFleet((f) => ({ ...f, error: String(err) }));
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identity]);
 
   const refreshJobs = useCallback(async () => {
     if (!workspaceId || workspaceId === "g_server") return;
@@ -244,14 +259,19 @@ export default function CommandCenter() {
 
   async function send(message: string) {
     if (!message.trim() || busy) return;
+    if (identity.kind === "guest") {
+      setLog((l) => [...l, { who: "hermes", text: "Sign in with Google to chat with the agent." }]);
+      return;
+    }
     setBusy(true);
     setInput("");
     setLog((l) => [...l, { who: "you", text: message }]);
     try {
+      const hdrs = await authHeaders();
       const res = await fetch("/api/hermesco/agent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId, message, history }),
+        headers: { "Content-Type": "application/json", ...hdrs },
+        body: JSON.stringify({ message, history }),
       });
       const data = (await res.json()) as AgentTurnResult & { error?: string };
       if (data.error) {
@@ -393,6 +413,10 @@ export default function CommandCenter() {
   // Pre-warm a real, dedicated Fly machine as this workspace's agent body.
   async function provisionBody() {
     if (provisioning) return;
+    if (identity.kind === "guest") {
+      setLog((l) => [...l, { who: "hermes", text: "Sign in with Google to provision an agent body." }]);
+      return;
+    }
     setProvisioning(true);
     try {
       let lastUser = "";
@@ -403,10 +427,11 @@ export default function CommandCenter() {
         }
       }
       const goal = (input.trim() || lastUser || "").slice(0, 200);
+      const hdrs = await authHeaders();
       const res = await fetch("/api/hermesco/agents", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId, goal }),
+        headers: { "Content-Type": "application/json", ...hdrs },
+        body: JSON.stringify({ goal }),
       });
       await res.json().catch(() => undefined);
     } finally {
@@ -418,9 +443,10 @@ export default function CommandCenter() {
   async function machineAction(id: string, action: "suspend" | "start") {
     setMachineBusy((m) => ({ ...m, [id]: action }));
     try {
+      const hdrs = await authHeaders();
       const res = await fetch(`/api/hermesco/agents/${id}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...hdrs },
         body: JSON.stringify({ action }),
       });
       const data = (await res.json()) as { machine?: AgentMachine };
@@ -443,7 +469,8 @@ export default function CommandCenter() {
   async function destroyMachine(id: string) {
     setMachineBusy((m) => ({ ...m, [id]: "destroy" }));
     try {
-      await fetch(`/api/hermesco/agents/${id}`, { method: "DELETE" });
+      const hdrs = await authHeaders();
+      await fetch(`/api/hermesco/agents/${id}`, { method: "DELETE", headers: hdrs });
     } finally {
       setMachineBusy((m) => {
         const next = { ...m };

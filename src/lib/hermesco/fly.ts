@@ -14,14 +14,17 @@ const AGENTS_APP = process.env.HERMESCO_AGENTS_APP || "hermesco-agents";
 const REGION = process.env.FLY_REGION || "iad";
 const ORG = process.env.FLY_ORG_SLUG || "personal";
 
-// Real horsepower by default - dedicated performance vCPUs, not the free
-// shared-cpu minimum. Tunable up for heavy jobs via env.
+// Shared CPUs keep costs sane (~$5/mo vs $31/mo for performance). The agent
+// only needs bursts during exec; it's idle the rest of the time.
 const AGENT_IMAGE =
   process.env.HERMESCO_AGENT_IMAGE || "nikolaik/python-nodejs:python3.12-nodejs22";
-const AGENT_CPU_KIND = process.env.HERMESCO_AGENT_CPU_KIND || "performance";
+const AGENT_CPU_KIND = process.env.HERMESCO_AGENT_CPU_KIND || "shared";
 const AGENT_CPUS = Math.max(1, Number(process.env.HERMESCO_AGENT_CPUS) || 2);
 const AGENT_MEMORY_MB =
-  Math.max(512, Number(process.env.HERMESCO_AGENT_MEMORY_MB) || 4096);
+  Math.max(512, Number(process.env.HERMESCO_AGENT_MEMORY_MB) || 2048);
+
+// Max machines per workspace — hard cap prevents runaway provisioning.
+const MAX_MACHINES_PER_WORKSPACE = 1;
 
 // Transparent, labelled estimate of the real Fly compute cost of an agent body
 // while it is running (performance vCPU + RAM). Surfaced as infra telemetry -
@@ -157,15 +160,27 @@ function shortId(): string {
   return Math.random().toString(36).slice(2, 8);
 }
 
-// Spin up a real, powerful, dedicated Fly machine as an agent body and wait for
-// it to be running. The machine stays alive (`sleep infinity` as PID 1) so the
-// agent can exec real work on it; it suspends to $0 when idle.
+// Spin up a real Fly machine as an agent body. The machine runs `sleep infinity`
+// so exec works. After each exec, we explicitly suspend it ($0 compute).
+// Cost: ~$5/mo per machine IF running 24/7; with suspend-after-exec it's pennies.
 export async function provisionAgentMachine(opts: {
   agentId?: string;
   label?: string;
   goal?: string;
   workspaceId?: string;
 }): Promise<AgentMachine> {
+  // Enforce per-workspace cap to prevent runaway provisioning
+  if (opts.workspaceId) {
+    const fleet = await listAgentMachines();
+    const existing = fleet.filter(
+      (m) => m.workspaceId === opts.workspaceId &&
+             m.state !== "destroyed" && m.state !== "destroying",
+    );
+    if (existing.length >= MAX_MACHINES_PER_WORKSPACE) {
+      return existing[0];
+    }
+  }
+
   await ensureAgentsApp();
   const agentId = opts.agentId || `agent-${shortId()}`;
   const created = await flyFetch<FlyMachineRaw>(`/apps/${AGENTS_APP}/machines`, {
@@ -177,8 +192,9 @@ export async function provisionAgentMachine(opts: {
         image: AGENT_IMAGE,
         guest: { cpu_kind: AGENT_CPU_KIND, cpus: AGENT_CPUS, memory_mb: AGENT_MEMORY_MB },
         init: { exec: ["sleep", "infinity"] },
-        auto_destroy: false,
-        restart: { policy: "on-failure", max_retries: 3 },
+        auto_destroy: true,
+        restart: { policy: "no" },
+        stop_config: { timeout: "5m", signal: "SIGTERM" },
         metadata: {
           platform: "hermesco",
           role: "agent-body",
@@ -230,8 +246,8 @@ export async function waitForState(
 }
 
 // Run a real shell command on the agent's own machine and return the real
-// result. Resumes a suspended machine first (warm) so the agent's body is
-// always reachable.
+// result. Resumes a stopped/suspended machine first so the agent's body is
+// always reachable. Suspends the machine after exec so it stops billing.
 export async function execOnMachine(
   id: string,
   command: string,
@@ -250,6 +266,11 @@ export async function execOnMachine(
       timeout: opts.timeoutSec ?? 60,
     }),
   });
+  // Suspend after exec so the machine stops billing immediately.
+  // Fire-and-forget — don't block the response on suspend completing.
+  // Do NOT fall back to stop — with auto_destroy:true, stop would permanently
+  // destroy the machine (sleep infinity exits → Fly auto-destroys).
+  suspendAgentMachine(id).catch(() => undefined);
   return {
     exitCode: typeof res.exit_code === "number" ? res.exit_code : null,
     stdout: String(res.stdout ?? ""),
@@ -279,6 +300,10 @@ export async function startAgentMachine(id: string): Promise<void> {
 
 export async function suspendAgentMachine(id: string): Promise<void> {
   await flyFetch<unknown>(`/apps/${AGENTS_APP}/machines/${id}/suspend`, { method: "POST" });
+}
+
+export async function stopAgentMachine(id: string): Promise<void> {
+  await flyFetch<unknown>(`/apps/${AGENTS_APP}/machines/${id}/stop`, { method: "POST" });
 }
 
 export async function destroyAgentMachine(id: string): Promise<void> {

@@ -3,21 +3,21 @@ import {
   AGENT_SPEC,
   flyConfigured,
   listAgentMachines,
-  provisionAgentMachine,
+  ensureAgentBody,
 } from "@/lib/hermesco/fly";
+import { verifyAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-interface ProvisionBody {
-  agentId?: string;
-  label?: string;
-  goal?: string;
-  workspaceId?: string;
-}
+// GET - the live fleet. Requires Firebase auth so random crawlers can't enumerate.
+export async function GET(req: NextRequest) {
+  try {
+    await verifyAuth(req);
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-// GET - the live fleet: every real Fly agent machine HermesCo has spun up.
-export async function GET() {
   if (!flyConfigured()) {
     return NextResponse.json({ configured: false, spec: AGENT_SPEC, machines: [] });
   }
@@ -30,27 +30,34 @@ export async function GET() {
   }
 }
 
-// POST - spin up a new dedicated, powerful Fly machine as an agent body.
+// POST - ensure an agent body exists for the authenticated user's workspace.
+// Uses ensureAgentBody (deduplicates) instead of raw provisionAgentMachine.
 export async function POST(req: NextRequest) {
+  let decoded;
+  try {
+    decoded = await verifyAuth(req);
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   if (!flyConfigured()) {
     return NextResponse.json(
       { error: "Fly is not connected. Set FLY_API_TOKEN to spin up agent machines." },
       { status: 400 },
     );
   }
-  let body: ProvisionBody = {};
+
+  let body: { goal?: string } = {};
   try {
-    body = (await req.json()) as ProvisionBody;
+    body = (await req.json()) as { goal?: string };
   } catch {
-    // empty body is fine - provision with defaults
+    // empty body is fine
   }
+
+  // Workspace is derived from the authenticated user, not from the request body.
+  const workspaceId = `u_${decoded.uid}`;
   try {
-    const machine = await provisionAgentMachine({
-      agentId: body.agentId?.trim() || undefined,
-      label: body.label?.trim() || undefined,
-      goal: body.goal?.trim() || undefined,
-      workspaceId: body.workspaceId?.trim() || undefined,
-    });
+    const machine = await ensureAgentBody(workspaceId, body.goal?.trim());
     return NextResponse.json({ machine });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

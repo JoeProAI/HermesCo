@@ -24,6 +24,8 @@ export interface Identity {
   photoURL: string | null;
   signInGoogle: () => Promise<{ ok: boolean; error?: string }>;
   signOut: () => Promise<void>;
+  /** Get a fresh Firebase ID token for authenticated API calls. Returns null for guests. */
+  getToken: () => Promise<string | null>;
 }
 
 function guestId(): string {
@@ -80,6 +82,15 @@ export function useIdentity(): Identity {
     await fbSignOut(auth);
   }, []);
 
+  const getToken = useCallback(async (): Promise<string | null> => {
+    if (!user) return null;
+    try {
+      return await user.getIdToken();
+    } catch {
+      return null;
+    }
+  }, [user]);
+
   return useMemo<Identity>(() => {
     if (user) {
       return {
@@ -91,6 +102,7 @@ export function useIdentity(): Identity {
         photoURL: user.photoURL,
         signInGoogle,
         signOut,
+        getToken,
       };
     }
     return {
@@ -102,6 +114,7 @@ export function useIdentity(): Identity {
       photoURL: null,
       signInGoogle,
       signOut,
+      getToken,
     };
-  }, [user, ready, guest, signInGoogle, signOut]);
+  }, [user, ready, guest, signInGoogle, signOut, getToken]);
 }
