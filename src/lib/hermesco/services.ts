@@ -584,10 +584,13 @@ try:
         "X-Frame-Options": "Missing (clickjacking possible)",
         "Content-Security-Policy": "No CSP (XSS risk higher)",
     }
+    missing_count = 0
     for h, risk in required.items():
         if h not in headers_info:
             findings.append(f"WARNING: {h} - {risk}")
-            if grade == "A": grade = "B"
+            missing_count += 1
+    if missing_count >= 3: grade = "C"
+    elif missing_count >= 1 and grade == "A": grade = "B"
     # Check for info leaks
     if "Server" in headers_info:
         findings.append(f"INFO: Server header exposes: {headers_info['Server']}")
@@ -758,7 +761,7 @@ if not text:
 # Fallback: MyMemory API (free tier, 5000 chars/day)
 translated = None
 try:
-    params = urllib.parse.urlencode({"q": text[:5000], "langpair": f"en|{target}"})
+    params = urllib.parse.urlencode({"q": text[:5000], "langpair": f"autodetect|{target}"})
     url = f"https://api.mymemory.translated.net/get?{params}"
     req = urllib.request.Request(url, headers={"User-Agent": "HermesCo-Agent/1.0"})
     resp = urllib.request.urlopen(req, timeout=15)
@@ -775,7 +778,7 @@ if not translated:
 emit({
     "original": text[:5000],
     "translated": translated,
-    "source_language": "en",
+    "source_language": "autodetect",
     "target_language": target,
     "char_count": len(text),
 })
