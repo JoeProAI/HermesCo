@@ -3,12 +3,12 @@ primary_region = "iad"
 
 [build]
   [build.args]
-    NEXT_PUBLIC_CONVEX_URL = "https://diligent-albatross-802.convex.cloud"
+    NEXT_PUBLIC_CONVEX_URL = "https://rapid-ermine-712.convex.cloud"
 
 [env]
   NODE_ENV = "production"
   NEXT_TELEMETRY_DISABLED = "1"
-  NEXT_PUBLIC_CONVEX_URL = "https://diligent-albatross-802.convex.cloud"
+  NEXT_PUBLIC_CONVEX_URL = "https://rapid-ermine-712.convex.cloud"
 
 [http_service]
   internal_port = 3000
