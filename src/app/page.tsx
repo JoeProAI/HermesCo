@@ -181,6 +181,18 @@ export default function Landing() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "clamp(14px, 3vw, 26px)" }}>
           <a
+            href="#services"
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 13,
+              color: "rgba(237,230,217,0.82)",
+              textDecoration: "none",
+              letterSpacing: "0.02em",
+            }}
+          >
+            Services
+          </a>
+          <a
             href="https://docs.hermesco.ai"
             target="_blank"
             rel="noopener noreferrer"
@@ -280,8 +292,9 @@ export default function Landing() {
               margin: "0 0 30px",
             }}
           >
-            HermesCo is a one-agent company. Hermes earns revenue, spends on the tools it
-            needs, and runs real operations, and every dollar is gated by a human-in-the-loop{" "}
+            HermesCo is an autonomous AI agent you can hire for real tasks: web research, security
+            audits, data analysis, translations, code execution, and more. Give it a job, pay via
+            Stripe, get a real deliverable back. Every dollar it spends is gated by a{" "}
             <strong style={{ color: CREAM, fontWeight: 600 }}>Treasury</strong> with hard caps it
             physically cannot breach.
           </motion.p>
@@ -427,6 +440,114 @@ export default function Landing() {
             body="Each agent runs on its own isolated Fly machine (a Daytona sandbox is the fallback), and every spend is screened by an NVIDIA Nemotron pass. A fleet of bounded, autonomous operators."
           />
         </div>
+      </section>
+
+      {/* what hermes does for you (customer-facing) */}
+      <section
+        id="services"
+        style={{
+          position: "relative",
+          zIndex: 1,
+          maxWidth: 1280,
+          margin: "0 auto",
+          padding: "60px clamp(20px, 5vw, 64px) 30px",
+        }}
+      >
+        <motion.div
+          custom={0}
+          variants={fadeUp}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-60px" }}
+        >
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 12,
+              letterSpacing: "0.16em",
+              color: TEAL,
+              marginBottom: 12,
+            }}
+          >
+            WHAT HERMES CAN DO FOR YOU
+          </div>
+          <h2
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: "clamp(28px, 4vw, 44px)",
+              fontWeight: 400,
+              margin: "0 0 8px",
+            }}
+          >
+            Give it a task. Get a real deliverable back.
+          </h2>
+          <p style={{ color: "rgba(237,230,217,0.6)", margin: "0 0 36px", maxWidth: 660 }}>
+            Tell Hermes what you need. It quotes a price, you pay via Stripe, and it runs real
+            code on a dedicated machine to deliver the result. No waiting, no back-and-forth.
+          </p>
+        </motion.div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: 14,
+          }}
+        >
+          {[
+            ["Web Research", "Find hotels, flights, products, reviews across multiple sources with citations.", "$25-40"],
+            ["Price Comparison", "Compare real pricing from multiple sites for any product or service.", "$25-35"],
+            ["Data Analysis", "Process CSV/JSON data and get statistics, patterns, and outliers.", "$30-40"],
+            ["SEO Audit", "Full site analysis: meta tags, headers, schema, security headers, scored.", "$30-40"],
+            ["Security Scan", "TLS, DNS, HSTS, CSP, clickjacking checks with a letter grade.", "$35-45"],
+            ["Domain Research", "WHOIS, DNS records, IP, hosting provider, tech stack detection.", "$20-30"],
+            ["Translation", "Real API translation between 20+ languages (not AI hallucination).", "$10-20"],
+            ["PDF Extraction", "Download and extract full text, metadata, and sections from any PDF.", "$20-30"],
+            ["API Integration", "Call any public REST API and get formatted JSON results back.", "$15-25"],
+            ["GPU Compute", "Rent real NVIDIA GPUs for ML training, inference, or rendering.", "$30-100"],
+            ["Code Execution", "Run any Python/Node/bash script on a dedicated isolated machine.", "$15-25"],
+            ["Custom Task", "Anything else. Describe what you need and Hermes figures it out.", "$25-50"],
+          ].map(([name, desc, price], i) => (
+            <motion.div
+              key={name}
+              custom={i}
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: "-40px" }}
+              style={{
+                border: "1px solid rgba(237,230,217,0.08)",
+                borderRadius: 10,
+                padding: "18px 16px",
+                background: "rgba(20,20,23,0.5)",
+                backdropFilter: "blur(6px)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+                <span style={{ fontWeight: 600, fontSize: 14, color: CREAM }}>{name}</span>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: GOLD }}>{price}</span>
+              </div>
+              <p style={{ color: "rgba(237,230,217,0.55)", fontSize: 13, lineHeight: 1.5, margin: 0 }}>
+                {desc}
+              </p>
+            </motion.div>
+          ))}
+        </div>
+        <motion.p
+          custom={12}
+          variants={fadeUp}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true }}
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 13,
+            color: "rgba(237,230,217,0.5)",
+            marginTop: 24,
+            textAlign: "center",
+          }}
+        >
+          All tasks run real code on a dedicated machine. No mock data, no demos. If it fails, you get an honest error.
+        </motion.p>
       </section>
 
       {/* money loop */}

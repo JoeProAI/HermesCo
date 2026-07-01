@@ -22,7 +22,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     name: "list_services",
     description:
-      "List the real services HermesCo can sell. Each one runs a concrete job and returns a usable deliverable. Most run on your own Fly machine; the GPU sweep rents a REAL cloud GPU from Modal (see each service's runs_on). Read this to pick the right service for the customer's task.",
+      "List the full catalog of services HermesCo can sell. Includes research, data analysis, web scraping, security scans, translations, PDF extraction, API calls, GPU compute, and a catch-all 'custom' for ANY task not covered. Each runs real code and returns a real deliverable. You are NOT limited to catalog items; use 'custom' for anything else.",
     parameters: {},
   },
   {
